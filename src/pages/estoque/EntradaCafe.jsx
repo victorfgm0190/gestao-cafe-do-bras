@@ -393,7 +393,9 @@ export default function EntradaCafe() {
                 <th>Tipo</th>
                 <th>Sacas / peso</th>
                 <th className="col-num">Custo / kg</th>
+                <th className="col-num">Custo total</th>
                 <th className="col-num">Saldo disponível</th>
+                <th className="col-num">Custo disponível</th>
                 <th>Status</th>
                 <th className="col-acoes">Ações</th>
               </tr>
@@ -401,7 +403,7 @@ export default function EntradaCafe() {
             <tbody>
               {lotesFiltrados.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="ec-vazio">
+                  <td colSpan={10} className="ec-vazio">
                     Nenhuma entrada encontrada.
                   </td>
                 </tr>
@@ -428,7 +430,13 @@ export default function EntradaCafe() {
                     <div className="ec-sub">{formatarKg(l.pesoTotal)}</div>
                   </td>
                   <td className="col-num">{formatarMoeda(l.custoPorKg)}</td>
+                  <td className="col-num">
+                    {formatarMoeda((Number(l.custoPorKg) || 0) * (Number(l.pesoTotal) || 0))}
+                  </td>
                   <td className="col-num ec-saldo">{formatarKg(l.saldoDisponivel)}</td>
+                  <td className="col-num">
+                    {formatarMoeda((Number(l.saldoDisponivel) || 0) * resumo.custoMedio)}
+                  </td>
                   <td>
                     <span
                       className={`badge ${
