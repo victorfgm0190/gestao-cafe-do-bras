@@ -1,13 +1,14 @@
 // OAuth2 do Bling v3 + núcleo de chamadas autenticadas à API.
 // Este arquivo também é um endpoint: GET /api/bling/auth → devolve a URL de autorização.
 //
-// IMPORTANTE sobre persistência de tokens:
-// Funções serverless NÃO conseguem gravar variáveis de ambiente em runtime — o env é
-// somente leitura. Mantemos os tokens num cache em memória (vive enquanto a lambda está
-// "quente"), semeado a partir de BLING_ACCESS_TOKEN / BLING_REFRESH_TOKEN. Em produção,
-// para persistência entre cold starts, ligue um Vercel KV / Upstash Redis nos pontos
-// marcados com "PERSISTÊNCIA" abaixo.
+// Persistência de tokens: Upstash Redis (via integração Vercel).
+// Os tokens ficam no Redis, sobrevivendo a cold starts e a novos deploys:
+//   bling:access_token  → TTL = expires_in (padrão 6h)
+//   bling:refresh_token → TTL = 30 dias
+// Quando o access_token expira, sua chave some do Redis e getToken() renova
+// automaticamente usando o refresh_token.
 
+import { Redis } from '@upstash/redis'
 import { respostaSucesso, respostaErro, enviarJson, aplicarCors, garantirMetodo, esperar } from './_lib.js'
 
 const BASE_URL = process.env.BLING_BASE_URL || 'https://www.bling.com.br/Api/v3'
@@ -18,11 +19,23 @@ const REDIRECT_URI =
 // SEGREDO: só via variável de ambiente. Nunca versionar o client secret.
 const CLIENT_SECRET = process.env.BLING_CLIENT_SECRET || ''
 
-// ---- Cache de tokens em memória (semeado do ambiente) ----
-const store = {
-  accessToken: process.env.BLING_ACCESS_TOKEN || '',
-  refreshToken: process.env.BLING_REFRESH_TOKEN || '',
-  expiraEm: 0, // epoch ms; 0 = desconhecido
+// ---- Chaves e TTLs do Redis ----
+const CHAVE_ACCESS = 'bling:access_token'
+const CHAVE_REFRESH = 'bling:refresh_token'
+const TTL_ACCESS_PADRAO = 21600 // 6h — usado se o Bling não devolver expires_in
+const TTL_REFRESH = 2592000 // 30 dias
+
+// Cliente Redis criado sob demanda (evita quebrar getAuthUrl quando o Redis não está configurado).
+let _redis = null
+function getRedis() {
+  if (_redis) return _redis
+  const url = process.env.KV_REST_API_URL
+  const token = process.env.KV_REST_API_TOKEN
+  if (!url || !token) {
+    throw new Error('Upstash Redis não configurado (KV_REST_API_URL / KV_REST_API_TOKEN).')
+  }
+  _redis = new Redis({ url, token })
+  return _redis
 }
 
 function credencialBasica() {
@@ -34,14 +47,27 @@ function credencialBasica() {
   return Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64')
 }
 
-function salvarTokens(dados) {
-  if (dados.access_token) store.accessToken = dados.access_token
-  if (dados.refresh_token) store.refreshToken = dados.refresh_token
-  if (dados.expires_in) {
-    // renova com 60s de folga
-    store.expiraEm = Date.now() + (Number(dados.expires_in) - 60) * 1000
+// Grava os tokens no Redis com seus TTLs.
+export async function salvarTokens(accessToken, refreshToken, expiresIn) {
+  const redis = getRedis()
+  const ttlAccess = Number(expiresIn) > 0 ? Number(expiresIn) : TTL_ACCESS_PADRAO
+  const ops = []
+  if (accessToken) ops.push(redis.set(CHAVE_ACCESS, accessToken, { ex: ttlAccess }))
+  if (refreshToken) ops.push(redis.set(CHAVE_REFRESH, refreshToken, { ex: TTL_REFRESH }))
+  await Promise.all(ops)
+}
+
+// Lê os tokens do Redis. Faz fallback para variáveis de ambiente (semente inicial).
+export async function carregarTokens() {
+  const redis = getRedis()
+  const [access, refresh] = await Promise.all([
+    redis.get(CHAVE_ACCESS),
+    redis.get(CHAVE_REFRESH),
+  ])
+  return {
+    accessToken: access || process.env.BLING_ACCESS_TOKEN || '',
+    refreshToken: refresh || process.env.BLING_REFRESH_TOKEN || '',
   }
-  // PERSISTÊNCIA: aqui você gravaria store.* no Vercel KV / Redis.
 }
 
 // URL para onde mandamos o usuário autorizar o app.
@@ -74,18 +100,19 @@ export async function exchangeCode(code) {
   if (!resp.ok) {
     throw new Error(json.error_description || json.error || `Falha ao trocar o code (HTTP ${resp.status}).`)
   }
-  salvarTokens(json)
+  await salvarTokens(json.access_token, json.refresh_token, json.expires_in)
   return json
 }
 
-// Renova o access_token usando o refresh_token.
+// Renova o access_token usando o refresh_token guardado no Redis.
 export async function refreshToken() {
-  if (!store.refreshToken) {
+  const { refreshToken: atual } = await carregarTokens()
+  if (!atual) {
     throw new Error('Sem refresh_token. Reconecte o Bling.')
   }
   const corpo = new URLSearchParams({
     grant_type: 'refresh_token',
-    refresh_token: store.refreshToken,
+    refresh_token: atual,
   })
   const resp = await fetch(`${BASE_URL}/oauth/token`, {
     method: 'POST',
@@ -100,23 +127,31 @@ export async function refreshToken() {
   if (!resp.ok) {
     throw new Error(json.error_description || json.error || `Falha ao renovar token (HTTP ${resp.status}).`)
   }
-  salvarTokens(json)
+  // O Bling devolve um novo refresh_token a cada renovação; mantemos o antigo se não vier.
+  await salvarTokens(json.access_token, json.refresh_token || atual, json.expires_in)
   return json
 }
 
-// Retorna um access_token válido, renovando se estiver perto de expirar.
+// Retorna um access_token válido. Se a chave do access expirou no Redis mas ainda
+// há refresh_token, renova automaticamente.
 export async function getToken() {
-  if (!store.accessToken) {
-    throw new Error('Bling não conectado. Autorize o app primeiro.')
+  const { accessToken, refreshToken: refresh } = await carregarTokens()
+  if (accessToken) return accessToken
+  if (refresh) {
+    const json = await refreshToken()
+    return json.access_token
   }
-  if (store.expiraEm && Date.now() >= store.expiraEm) {
-    await refreshToken()
-  }
-  return store.accessToken
+  throw new Error('Bling não conectado. Autorize o app primeiro.')
 }
 
-export function estaConectado() {
-  return Boolean(store.accessToken)
+// Há uma conexão ativa? (existe refresh_token guardado)
+export async function estaConectado() {
+  try {
+    const { refreshToken: refresh } = await carregarTokens()
+    return Boolean(refresh)
+  } catch {
+    return false
+  }
 }
 
 // Chamada autenticada à API do Bling com:
@@ -170,11 +205,8 @@ export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, 'GET')) return
   try {
-    enviarJson(
-      res,
-      200,
-      respostaSucesso({ url: getAuthUrl(), conectado: estaConectado() }),
-    )
+    const conectado = await estaConectado()
+    enviarJson(res, 200, respostaSucesso({ url: getAuthUrl(), conectado }))
   } catch (e) {
     enviarJson(res, 500, respostaErro(e.message))
   }
