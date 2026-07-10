@@ -27,6 +27,14 @@ const SUBMODULOS = [
     rota: '/estoque/saldo',
     disponivel: true,
   },
+  {
+    chave: 'insumos',
+    nome: 'Insumos',
+    descricao: 'Embalagens, etiquetas, caixas e demais insumos.',
+    icone: '🧰',
+    rota: '/estoque/insumos',
+    disponivel: true,
+  },
 ]
 
 export default function EstoqueIndex() {

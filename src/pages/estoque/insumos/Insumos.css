@@ -1,0 +1,62 @@
+/* Estilos específicos do módulo de insumos.
+   As abas, tabelas (kx-*), totais e modal reaproveitam CafeCru.css. */
+
+.in-card {
+  background: var(--branco);
+  border: var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+  max-width: 640px;
+  margin-bottom: 24px;
+}
+
+.in-card h2 {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--verde);
+  margin-bottom: 18px;
+}
+
+.in-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.in-form-linha {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.in-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.in-calculado {
+  padding: 11px 13px;
+  border: 1px dashed var(--creme-escuro);
+  border-radius: var(--radius-sm);
+  background: var(--creme);
+  font-weight: 700;
+  color: var(--verde);
+}
+
+/* Linha de insumo abaixo do estoque mínimo */
+.in-alerta td {
+  background: rgba(139, 32, 32, 0.06);
+}
+
+.in-alerta:hover td {
+  background: rgba(139, 32, 32, 0.1) !important;
+}
+
+@media (max-width: 560px) {
+  .in-form-linha {
+    grid-template-columns: 1fr;
+  }
+}

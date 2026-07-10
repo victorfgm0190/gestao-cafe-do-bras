@@ -8,6 +8,10 @@ import EstoqueIndex from './pages/estoque/EstoqueIndex'
 import EntradaCafe from './pages/estoque/EntradaCafe'
 import KardexCafeCru from './pages/estoque/KardexCafeCru'
 import SaldoCafeCru from './pages/estoque/SaldoCafeCru'
+import InsumosCadastro from './pages/estoque/insumos/InsumosCadastro'
+import InsumosEntrada from './pages/estoque/insumos/InsumosEntrada'
+import InsumosKardex from './pages/estoque/insumos/InsumosKardex'
+import InsumosSaldo from './pages/estoque/insumos/InsumosSaldo'
 import Usuarios from './pages/usuarios/Usuarios'
 import Auditoria from './pages/auditoria/Auditoria'
 import Bling from './pages/integracoes/Bling'
@@ -82,6 +86,38 @@ export default function App() {
         element={
           <RotaProtegida>
             <SaldoCafeCru />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/insumos"
+        element={
+          <RotaProtegida>
+            <InsumosCadastro />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/insumos/entrada"
+        element={
+          <RotaProtegida>
+            <InsumosEntrada />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/insumos/kardex"
+        element={
+          <RotaProtegida>
+            <InsumosKardex />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/insumos/saldo"
+        element={
+          <RotaProtegida>
+            <InsumosSaldo />
           </RotaProtegida>
         }
       />
