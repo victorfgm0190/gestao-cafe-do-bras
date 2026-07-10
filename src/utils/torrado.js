@@ -9,7 +9,7 @@
 // O café torrado NÃO é comprado: cada torra baixa peso do café cru e gera o torrado.
 //   custo unitário do torrado = (peso_cru × custo_médio_cru) / peso_torrado
 
-import { hojeISO, formatarData } from './formato'
+import { hojeISO, formatarData, formatarMoeda } from './formato'
 import {
   TIPOS_MOV,
   registrarMovimentacao as registrarMovCru,
@@ -224,11 +224,15 @@ export function registrarTorra(input) {
   // (c) custo do torrado = (peso cru × custo do lote) / peso torrado
   const custoTorradoUnit = pesoTorrado > 0 ? (pesoCru * custoLote) / pesoTorrado : 0
 
-  // (d) entrada no kardex do café torrado
+  // Perda de peso (%) = ((peso cru - peso torrado) / peso cru) × 100
+  const perdaPct = pesoCru > 0 ? ((pesoCru - pesoTorrado) / pesoCru) * 100 : 0
+  const perdaFmt = `${perdaPct.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
+
+  // (d) entrada no kardex do café torrado — descrição enriquecida com custo do cru e perda
   const movTorrado = registrarMovimentacaoTorrado({
     tipo: TIPOS_MOV.ENTRADA,
     data,
-    descricao: `Torra ${formatarData(data)} — ${lote.codigo || 'lote'} (${input.perfil})`,
+    descricao: `Torra ${formatarData(data)} — ${lote.codigo || 'lote'} (${input.perfil}) | Cru: ${formatarMoeda(custoLote)}/kg | Perda: ${perdaFmt}`,
     quantidade: pesoTorrado,
     custoUnitario: custoTorradoUnit,
   })
