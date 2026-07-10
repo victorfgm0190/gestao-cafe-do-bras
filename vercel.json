@@ -1,13 +1,8 @@
 {
-  "version": 2,
-  "builds": [
-    { "src": "package.json", "use": "@vercel/static-build", "config": { "distDir": "dist" } },
-    { "src": "api/**/*.js", "use": "@vercel/node" }
-  ],
-  "routes": [
-    { "src": "/api/bling/(.*)", "dest": "/api/bling/$1" },
-    { "src": "/bling/callback", "dest": "/api/bling/callback" },
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/bling/callback", "destination": "/api/bling/callback" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
