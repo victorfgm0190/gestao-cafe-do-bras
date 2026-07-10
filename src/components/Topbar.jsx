@@ -51,6 +51,11 @@ export default function Topbar() {
     navigate('/trocar-senha')
   }
 
+  function handleEstoqueMinimo() {
+    setMenuAberto(false)
+    navigate('/configuracoes/estoque-minimo')
+  }
+
   const nome = usuario?.usuario || 'visitante'
 
   return (
@@ -80,6 +85,9 @@ export default function Topbar() {
           <div className="topbar-menu" role="menu">
             <button className="topbar-menu-item" role="menuitem" onClick={handleTrocarSenha}>
               🔑 Trocar senha
+            </button>
+            <button className="topbar-menu-item" role="menuitem" onClick={handleEstoqueMinimo}>
+              ⚙️ Estoque mínimo
             </button>
             <button
               className="topbar-menu-item topbar-menu-sair"

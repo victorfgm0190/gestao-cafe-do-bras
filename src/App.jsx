@@ -19,6 +19,8 @@ import PACadastro from './pages/estoque/pa/PACadastro'
 import OrdemProducao from './pages/estoque/pa/OrdemProducao'
 import PAEstoque from './pages/estoque/pa/PAEstoque'
 import HistoricoProducao from './pages/estoque/pa/HistoricoProducao'
+import EstoqueMinimo from './pages/configuracoes/EstoqueMinimo'
+import AlertaEstoque from './components/AlertaEstoque'
 import Usuarios from './pages/usuarios/Usuarios'
 import Auditoria from './pages/auditoria/Auditoria'
 import Bling from './pages/integracoes/Bling'
@@ -38,7 +40,9 @@ function RotaProtegida({ children, permiteTrocaPendente = false }) {
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <AlertaEstoque />
+      <Routes>
       <Route path="/" element={<Login />} />
       <Route
         path="/trocar-senha"
@@ -185,6 +189,14 @@ export default function App() {
         }
       />
       <Route
+        path="/configuracoes/estoque-minimo"
+        element={
+          <RotaProtegida>
+            <EstoqueMinimo />
+          </RotaProtegida>
+        }
+      />
+      <Route
         path="/usuarios"
         element={
           <RotaProtegida>
@@ -209,6 +221,7 @@ export default function App() {
         }
       />
       <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+      </Routes>
+    </>
   )
 }

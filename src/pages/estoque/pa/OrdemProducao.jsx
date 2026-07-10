@@ -11,7 +11,9 @@ import {
   calcularOrdem,
   registrarOrdem,
   formatarGramatura,
+  embalagemDoPA,
 } from '../../../utils/pa'
+import { carregarCadastro as carregarInsumos, resumoPorInsumo } from '../../../utils/insumos'
 import '../CafeCru.css'
 import './PA.css'
 
@@ -33,6 +35,18 @@ export default function OrdemProducao() {
   const [erros, setErros] = useState({})
 
   const pa = pas.find((p) => p.id === Number(paId)) || null
+
+  const insumos = useMemo(() => carregarInsumos(), [])
+  const resumoInsumos = useMemo(() => resumoPorInsumo(), [])
+
+  // Embalagem disponível para a gramatura escolhida (etapa 1)
+  const embInfo = useMemo(() => {
+    if (!pa || !gramatura) return null
+    const id = embalagemDoPA(pa, Number(gramatura))
+    if (!id) return { semVinculo: true }
+    const ins = insumos.find((i) => i.id === id)
+    return { nome: ins?.nome || 'Embalagem', saldo: Number(resumoInsumos[id]?.saldoAtual) || 0 }
+  }, [pa, gramatura, insumos, resumoInsumos])
 
   const calc = useMemo(
     () => calcularOrdem({ paId, gramatura, quantidade, lotes: linhasLote, sobra }),
@@ -198,6 +212,22 @@ export default function OrdemProducao() {
               <span className="pa-calc-label">Total embalado</span>
               <strong className="pa-calc-valor dourado">{kg3(calc.embaladoKg)}</strong>
             </div>
+            {embInfo && (
+              <div className="pa-calc-item">
+                <span className="pa-calc-label">Embalagem disponível</span>
+                {embInfo.semVinculo ? (
+                  <strong className="pa-calc-valor">sem embalagem vinculada</strong>
+                ) : (
+                  <strong
+                    className={`pa-calc-valor ${
+                      Number(quantidade) > 0 && embInfo.saldo < Number(quantidade) ? 'danger' : ''
+                    }`}
+                  >
+                    {embInfo.saldo} unidades
+                  </strong>
+                )}
+              </div>
+            )}
           </div>
         </section>
 
@@ -206,41 +236,50 @@ export default function OrdemProducao() {
           <div className="pa-etapa-titulo">
             <span className="pa-etapa-num">2</span> Café utilizado (mix de lotes)
           </div>
-          {linhasLote.map((linha, i) => (
-            <div className="pa-lote-row" key={i}>
-              <label className="campo">
-                <span className="campo-label">Lote</span>
-                <select value={linha.loteId} onChange={(e) => atualizarLinha(i, 'loteId', e.target.value)}>
-                  <option value="">Selecione um lote...</option>
-                  {lotesCru.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.codigo} — {l.produtor} ({formatarKg(l.saldoDisponivel)})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="campo">
-                <span className="campo-label">Kg utilizados</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={linha.kg}
-                  onChange={(e) => atualizarLinha(i, 'kg', e.target.value)}
-                  placeholder="0,00"
-                />
-              </label>
-              <button
-                type="button"
-                className="pa-lote-remover"
-                onClick={() => removerLinha(i)}
-                disabled={linhasLote.length === 1}
-                title="Remover lote"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
+          {linhasLote.map((linha, i) => {
+            const loteLinha = lotesCru.find((l) => l.id === Number(linha.loteId)) || null
+            const saldoLinha = Number(loteLinha?.saldoDisponivel) || 0
+            return (
+              <div className="pa-lote-row" key={i}>
+                <label className="campo">
+                  <span className="campo-label">Lote</span>
+                  <select value={linha.loteId} onChange={(e) => atualizarLinha(i, 'loteId', e.target.value)}>
+                    <option value="">Selecione um lote...</option>
+                    {lotesCru.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.codigo} — {l.produtor} ({formatarKg(l.saldoDisponivel)})
+                      </option>
+                    ))}
+                  </select>
+                  {loteLinha && (
+                    <span className={`pa-disp ${saldoLinha < 1 ? 'baixo' : 'ok'}`}>
+                      Disponível: {formatarKg(saldoLinha)}
+                    </span>
+                  )}
+                </label>
+                <label className="campo">
+                  <span className="campo-label">Kg utilizados</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={linha.kg}
+                    onChange={(e) => atualizarLinha(i, 'kg', e.target.value)}
+                    placeholder="0,00"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="pa-lote-remover"
+                  onClick={() => removerLinha(i)}
+                  disabled={linhasLote.length === 1}
+                  title="Remover lote"
+                >
+                  ✕
+                </button>
+              </div>
+            )
+          })}
           {erros.lotes && <span className="campo-erro">{erros.lotes}</span>}
           <button type="button" className="btn btn-ghost" onClick={adicionarLinha} style={{ marginTop: 6 }}>
             + Adicionar lote

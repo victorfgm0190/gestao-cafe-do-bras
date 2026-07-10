@@ -1,7 +1,11 @@
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Topbar from '../components/Topbar'
 import { getUsuario } from '../utils/auth'
 import { ehMaster } from '../utils/permissoes'
+import { formatarKg, formatarMoeda } from '../utils/formato'
+import { lotesCruDisponiveis, resumoPAEstoque, formatarGramatura } from '../utils/pa'
+import { carregarEstoqueTorrado } from '../utils/torrado'
 import './Dashboard.css'
 
 const MODULOS = [
@@ -78,6 +82,20 @@ export default function Dashboard() {
   // Módulos administrativos (soMaster) só aparecem para o perfil Master
   const modulosVisiveis = MODULOS.filter((m) => !m.soMaster || master)
 
+  // Resumo de estoque rápido
+  const cruKg = useMemo(
+    () => lotesCruDisponiveis().reduce((s, l) => s + (Number(l.saldoDisponivel) || 0), 0),
+    [],
+  )
+  const torrado = useMemo(() => carregarEstoqueTorrado(), [])
+  const embalados = useMemo(
+    () =>
+      resumoPAEstoque()
+        .filter((r) => r.quantidade > 0)
+        .sort((a, b) => (a.paNome || '').localeCompare(b.paNome || '') || a.gramatura - b.gramatura),
+    [],
+  )
+
   function abrir(modulo) {
     if (modulo.disponivel && modulo.rota) {
       navigate(modulo.rota)
@@ -97,6 +115,49 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Estoque rápido */}
+        <h2 className="dash-secao">Estoque rápido</h2>
+        <div className="dash-estoque">
+          <div className="dash-eq-card" onClick={() => navigate('/estoque/entrada-cafe')}>
+            <span className="dash-eq-icone">🌱</span>
+            <span className="dash-eq-label">Café in natura</span>
+            <strong className="dash-eq-valor">{formatarKg(cruKg)}</strong>
+            <span className="dash-eq-nota">Saldo disponível dos lotes</span>
+          </div>
+
+          <div className="dash-eq-card" onClick={() => navigate('/estoque/torrado/saldo')}>
+            <span className="dash-eq-icone">🔥</span>
+            <span className="dash-eq-label">Café torrado</span>
+            <strong className="dash-eq-valor">{formatarKg(torrado.saldoAtual)}</strong>
+            <span className="dash-eq-nota">
+              Custo médio {formatarMoeda(torrado.custoMedio)}/kg
+            </span>
+          </div>
+
+          <div className="dash-eq-card" onClick={() => navigate('/estoque/pa/estoque')}>
+            <span className="dash-eq-icone">☕</span>
+            <span className="dash-eq-label">Produtos embalados</span>
+            {embalados.length === 0 ? (
+              <strong className="dash-eq-valor">—</strong>
+            ) : (
+              <ul className="dash-eq-lista">
+                {embalados.slice(0, 5).map((p) => (
+                  <li key={`${p.paId}-${p.gramatura}`}>
+                    <span>
+                      {p.paNome} {formatarGramatura(p.gramatura)}
+                    </span>
+                    <strong>{p.quantidade} un</strong>
+                  </li>
+                ))}
+                {embalados.length > 5 && (
+                  <li className="dash-eq-mais">+{embalados.length - 5} outros</li>
+                )}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        <h2 className="dash-secao">Módulos</h2>
         <div className="dash-grid">
           {modulosVisiveis.map((m) => (
             <button
