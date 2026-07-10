@@ -177,3 +177,12 @@ export function registrarMovimentacao(input) {
   salvarEstoqueResumo({ saldoAtual, custoMedio, ultimaAtualizacao: agoraTexto() })
   return registro
 }
+
+// Remove uma movimentação pelo id e reprocessa o kardex + o resumo.
+// Usado no estorno de torras (a saída gerada é removida).
+export function removerMovimentacao(id) {
+  const movs = carregarKardex().filter((m) => m.id !== Number(id))
+  const { saldoAtual, custoMedio } = recalcular(movs)
+  salvarKardex(movs)
+  salvarEstoqueResumo({ saldoAtual, custoMedio, ultimaAtualizacao: agoraTexto() })
+}

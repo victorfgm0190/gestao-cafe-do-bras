@@ -13,13 +13,16 @@ import { hojeISO, formatarData } from './formato'
 import {
   TIPOS_MOV,
   registrarMovimentacao as registrarMovCru,
+  removerMovimentacao as removerMovCru,
+  carregarKardex as carregarKardexCru,
   carregarEstoqueResumo as carregarResumoCru,
   garantirKardexInicial as garantirKardexCru,
 } from './kardex'
 
 export const CHAVE_ESTOQUE_TORRADO = 'estoque_cafe_torrado'
 export const CHAVE_KARDEX_TORRADO = 'kardex_cafe_torrado'
-export const CHAVE_TORRAS = 'torras_cafe'
+export const CHAVE_TORRAS = 'torras_historico'
+const CHAVE_TORRAS_ANTIGA = 'torras_cafe'
 const CHAVE_LOTES_CRU = 'cafe_do_bras_estoque'
 
 export const PERFIS_TORRA = ['Clara', 'Média', 'Escura']
@@ -43,6 +46,14 @@ export function carregarKardexTorrado() {
 
 function salvarKardexTorrado(lista) {
   localStorage.setItem(CHAVE_KARDEX_TORRADO, JSON.stringify(lista))
+}
+
+// Remove uma movimentação do kardex do torrado pelo id e reprocessa o resumo.
+export function removerMovimentacaoTorrado(id) {
+  const movs = carregarKardexTorrado().filter((m) => m.id !== Number(id))
+  const { saldoAtual, custoMedio } = recalcular(movs)
+  salvarKardexTorrado(movs)
+  salvarEstoqueTorrado({ saldoAtual, custoMedio, ultimaAtualizacao: agoraTexto() })
 }
 
 function salvarEstoqueTorrado(resumo) {
@@ -142,6 +153,10 @@ export function lotesCruDisponiveis() {
   return carregarLotesCru().filter((l) => (Number(l.saldoDisponivel) || 0) > 0)
 }
 
+export function loteCruPorId(id) {
+  return carregarLotesCru().find((l) => l.id === Number(id)) || null
+}
+
 // Custo médio ponderado atual do café cru.
 export function custoMedioCru() {
   garantirKardexCru()
@@ -151,7 +166,15 @@ export function custoMedioCru() {
 // ---------- Histórico de torras ----------
 export function carregarTorras() {
   try {
-    const bruto = localStorage.getItem(CHAVE_TORRAS)
+    let bruto = localStorage.getItem(CHAVE_TORRAS)
+    if (!bruto) {
+      // Migra do nome de chave antigo, se existir.
+      const antigo = localStorage.getItem(CHAVE_TORRAS_ANTIGA)
+      if (antigo) {
+        localStorage.setItem(CHAVE_TORRAS, antigo)
+        bruto = antigo
+      }
+    }
     const dado = bruto ? JSON.parse(bruto) : []
     return Array.isArray(dado) ? dado : []
   } catch {
@@ -190,7 +213,7 @@ export function registrarTorra(input) {
   )
 
   // (b) saída no kardex do café cru, valorizada pelo custo do próprio lote
-  registrarMovCru({
+  const movCru = registrarMovCru({
     tipo: TIPOS_MOV.SAIDA,
     data,
     descricao: `Torra ${formatarData(data)} — ${lote.codigo || 'lote'}`,
@@ -202,7 +225,7 @@ export function registrarTorra(input) {
   const custoTorradoUnit = pesoTorrado > 0 ? (pesoCru * custoLote) / pesoTorrado : 0
 
   // (d) entrada no kardex do café torrado
-  registrarMovimentacaoTorrado({
+  const movTorrado = registrarMovimentacaoTorrado({
     tipo: TIPOS_MOV.ENTRADA,
     data,
     descricao: `Torra ${formatarData(data)} — ${lote.codigo || 'lote'} (${input.perfil})`,
@@ -226,7 +249,68 @@ export function registrarTorra(input) {
     observacao: (input.observacao || '').trim(),
     custoPorKgLote: custoLote,
     custoTorradoUnit,
+    movCruId: movCru?.id ?? null, // saída gerada no kardex do cru
+    movTorradoId: movTorrado?.id ?? null, // entrada gerada no kardex do torrado
   }
   salvarTorras([...torras, registro])
   return registro
+}
+
+// Localiza o id da saída do cru gerada por uma torra (usa o id salvo ou casa por descrição).
+function idSaidaCru(torra) {
+  if (torra.movCruId) return torra.movCruId
+  const alvo = `Torra ${formatarData(torra.data)}`
+  const m = carregarKardexCru().find(
+    (x) =>
+      x.tipo === TIPOS_MOV.SAIDA &&
+      (x.descricao || '').startsWith(alvo) &&
+      Math.abs((Number(x.quantidade) || 0) + (Number(torra.pesoCru) || 0)) < 1e-6,
+  )
+  return m ? m.id : null
+}
+
+function idEntradaTorrado(torra) {
+  if (torra.movTorradoId) return torra.movTorradoId
+  const alvo = `Torra ${formatarData(torra.data)}`
+  const m = carregarKardexTorrado().find(
+    (x) =>
+      x.tipo === TIPOS_MOV.ENTRADA &&
+      (x.descricao || '').startsWith(alvo) &&
+      Math.abs((Number(x.quantidade) || 0) - (Number(torra.pesoTorrado) || 0)) < 1e-6,
+  )
+  return m ? m.id : null
+}
+
+// Estorna uma torra: devolve o cru ao lote, remove as movimentações geradas e
+// tira a torra do histórico. Recalcula os saldos/custos dos dois kardex.
+export function estornarTorra(torraId) {
+  const torras = carregarTorras()
+  const torra = torras.find((t) => t.id === Number(torraId))
+  if (!torra) return null
+
+  // (b/e) devolve o peso cru ao lote de origem
+  const lotes = carregarLotesCru()
+  const lote = lotes.find((l) => l.id === Number(torra.loteId))
+  if (lote) {
+    const novoSaldo = (Number(lote.saldoDisponivel) || 0) + (Number(torra.pesoCru) || 0)
+    salvarLotesCru(
+      lotes.map((l) =>
+        l.id === lote.id
+          ? { ...l, saldoDisponivel: novoSaldo, status: novoSaldo > 0 ? 'disponivel' : 'esgotado' }
+          : l,
+      ),
+    )
+  }
+
+  // (b) estorna a saída no kardex do cru
+  const cruId = idSaidaCru(torra)
+  if (cruId != null) removerMovCru(cruId)
+
+  // (c/d) remove a entrada no kardex do torrado e recalcula
+  const torradoId = idEntradaTorrado(torra)
+  if (torradoId != null) removerMovimentacaoTorrado(torradoId)
+
+  // (a) remove a torra do histórico
+  salvarTorras(torras.filter((t) => t.id !== Number(torra.id)))
+  return torra
 }

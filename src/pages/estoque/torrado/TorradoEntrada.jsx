@@ -7,7 +7,9 @@ import { registrarLog, ACOES } from '../../../utils/auditoria'
 import { nomeUsuarioAtual } from '../../../utils/permissoes'
 import {
   lotesCruDisponiveis,
+  loteCruPorId,
   registrarTorra,
+  estornarTorra,
   carregarTorras,
   PERFIS_TORRA,
 } from '../../../utils/torrado'
@@ -32,6 +34,11 @@ export default function TorradoEntrada() {
   const [torras, setTorras] = useState(carregarTorras)
   const [form, setForm] = useState(FORM_VAZIO)
   const [erros, setErros] = useState({})
+
+  // Estado do modal de edição
+  const [editId, setEditId] = useState(null)
+  const [formEdit, setFormEdit] = useState(FORM_VAZIO)
+  const [errosEdit, setErrosEdit] = useState({})
 
   const lote = lotes.find((l) => l.id === Number(form.loteId)) || null
   const saldoLote = Number(lote?.saldoDisponivel) || 0
@@ -86,6 +93,111 @@ export default function TorradoEntrada() {
     setTorras(carregarTorras())
     setForm({ ...FORM_VAZIO, data: form.data })
     setErros({})
+  }
+
+  // ---- Excluir (estorno completo) ----
+  function excluir(torra) {
+    if (
+      window.confirm(
+        'Tem certeza? Esta ação vai estornar todas as movimentações geradas por esta torra.',
+      )
+    ) {
+      estornarTorra(torra.id)
+      registrarLog(
+        nomeUsuarioAtual(),
+        'Estoque PP',
+        ACOES.EXCLUIU,
+        `Estornou a torra ${formatarData(torra.data)} — ${torra.loteCodigo} (${formatarKg(torra.pesoTorrado)} torrado)`,
+      )
+      setLotes(lotesCruDisponiveis())
+      setTorras(carregarTorras())
+    }
+  }
+
+  // ---- Editar ----
+  // Lotes do select de edição: disponíveis + o lote original (mesmo sem saldo).
+  const lotesEdicao = useMemo(() => {
+    const base = lotesCruDisponiveis()
+    const torra = editId != null ? torras.find((t) => t.id === editId) : null
+    if (torra && !base.some((l) => l.id === Number(torra.loteId))) {
+      const orig = loteCruPorId(torra.loteId)
+      if (orig) return [...base, orig]
+    }
+    return base
+  }, [editId, torras])
+
+  const torraEditando = editId != null ? torras.find((t) => t.id === editId) : null
+  const loteEdit = lotesEdicao.find((l) => l.id === Number(formEdit.loteId)) || null
+  const saldoLoteEdit = Number(loteEdit?.saldoDisponivel) || 0
+  const custoLoteEdit = Number(loteEdit?.custoPorKg) || 0
+  // Ao editar mantendo o mesmo lote, o peso cru original volta a ficar disponível.
+  const maxCruEdit =
+    saldoLoteEdit +
+    (torraEditando && Number(loteEdit?.id) === Number(torraEditando.loteId)
+      ? Number(torraEditando.pesoCru) || 0
+      : 0)
+  const pesoCruEditNum = Number(String(formEdit.pesoCru).replace(',', '.')) || 0
+  const pesoTorradoEditNum = Number(String(formEdit.pesoTorrado).replace(',', '.')) || 0
+  const rendimentoEdit = pesoCruEditNum > 0 ? (pesoTorradoEditNum / pesoCruEditNum) * 100 : 0
+  const custoTorradoEdit =
+    pesoTorradoEditNum > 0 ? (pesoCruEditNum * custoLoteEdit) / pesoTorradoEditNum : 0
+
+  function abrirEdicao(torra) {
+    setEditId(torra.id)
+    setFormEdit({
+      data: torra.data,
+      loteId: String(torra.loteId),
+      pesoCru: String(torra.pesoCru),
+      pesoTorrado: String(torra.pesoTorrado),
+      perfil: torra.perfil || 'Média',
+      observacao: torra.observacao || '',
+    })
+    setErrosEdit({})
+  }
+
+  function atualizarCampoEdit(campo, valor) {
+    setFormEdit((f) => ({ ...f, [campo]: valor }))
+  }
+
+  function validarEdit() {
+    const e = {}
+    if (!formEdit.loteId) e.loteId = 'Selecione o lote de origem.'
+    if (!pesoCruEditNum || pesoCruEditNum <= 0) e.pesoCru = 'Informe o peso cru.'
+    else if (loteEdit && pesoCruEditNum > maxCruEdit)
+      e.pesoCru = `Máximo disponível: ${formatarKg(maxCruEdit)}.`
+    if (!pesoTorradoEditNum || pesoTorradoEditNum <= 0) e.pesoTorrado = 'Informe o peso torrado.'
+    else if (pesoTorradoEditNum > pesoCruEditNum)
+      e.pesoTorrado = 'O torrado não pode pesar mais que o cru.'
+    if (!formEdit.data) e.data = 'Informe a data.'
+    setErrosEdit(e)
+    return Object.keys(e).length === 0
+  }
+
+  function salvarEdicao(e) {
+    e.preventDefault()
+    if (!validarEdit()) return
+
+    // Estorna a torra antiga e registra a nova corrigida.
+    estornarTorra(editId)
+    registrarTorra({
+      data: formEdit.data,
+      loteId: formEdit.loteId,
+      pesoCru: formEdit.pesoCru,
+      pesoTorrado: formEdit.pesoTorrado,
+      perfil: formEdit.perfil,
+      observacao: formEdit.observacao,
+    })
+
+    registrarLog(
+      nomeUsuarioAtual(),
+      'Estoque PP',
+      ACOES.ALTEROU,
+      `Editou a torra ${formatarData(formEdit.data)}: ${formatarKg(pesoCruEditNum)} cru → ${formatarKg(pesoTorradoEditNum)} torrado (${formatarPct(rendimentoEdit)})`,
+    )
+
+    setLotes(lotesCruDisponiveis())
+    setTorras(carregarTorras())
+    setEditId(null)
   }
 
   const torrasOrdenadas = useMemo(
@@ -239,12 +351,13 @@ export default function TorradoEntrada() {
                 <th className="kx-num">Peso torrado</th>
                 <th className="kx-num">Rendimento</th>
                 <th>Perfil</th>
+                <th className="kx-num">Ações</th>
               </tr>
             </thead>
             <tbody>
               {torrasOrdenadas.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="kx-vazio">
+                  <td colSpan={7} className="kx-vazio">
                     Nenhuma torra registrada ainda.
                   </td>
                 </tr>
@@ -260,12 +373,146 @@ export default function TorradoEntrada() {
                   <td className="kx-num">{formatarKg(t.pesoTorrado)}</td>
                   <td className="kx-num">{formatarPct(t.rendimento)}</td>
                   <td>{t.perfil}</td>
+                  <td className="kx-num">
+                    <div style={{ display: 'inline-flex', gap: 6 }}>
+                      <button className="kx-limpar" onClick={() => abrirEdicao(t)}>
+                        ✎ Editar
+                      </button>
+                      <button className="kx-limpar" onClick={() => excluir(t)}>
+                        🗑 Excluir
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </main>
+
+      {/* Modal de edição de torra */}
+      {editId != null && (
+        <div className="kx-overlay" onMouseDown={() => setEditId(null)}>
+          <div className="kx-modal" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="kx-modal-topo">
+              <h2>Editar torra</h2>
+              <button className="kx-fechar" onClick={() => setEditId(null)} aria-label="Fechar">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={salvarEdicao} className="kx-form">
+              <div className="kx-form-linha">
+                <label className="campo">
+                  <span className="campo-label">
+                    Data da torra <span className="obrig">*</span>
+                  </span>
+                  <input
+                    type="date"
+                    value={formEdit.data}
+                    onChange={(e) => atualizarCampoEdit('data', e.target.value)}
+                  />
+                  {errosEdit.data && <span className="campo-erro">{errosEdit.data}</span>}
+                </label>
+                <label className="campo">
+                  <span className="campo-label">
+                    Lote de origem <span className="obrig">*</span>
+                  </span>
+                  <select value={formEdit.loteId} onChange={(e) => atualizarCampoEdit('loteId', e.target.value)}>
+                    <option value="">Selecione um lote...</option>
+                    {lotesEdicao.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.codigo} — {l.produtor} ({formatarKg(l.saldoDisponivel)})
+                      </option>
+                    ))}
+                  </select>
+                  {errosEdit.loteId && <span className="campo-erro">{errosEdit.loteId}</span>}
+                </label>
+              </div>
+
+              <div className="kx-form-linha">
+                <label className="campo">
+                  <span className="campo-label">
+                    Peso cru (kg) <span className="obrig">*</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formEdit.pesoCru}
+                    onChange={(e) => atualizarCampoEdit('pesoCru', e.target.value)}
+                    placeholder="0,00"
+                  />
+                  {loteEdit && (
+                    <span className="campo-ajuda">Máximo disponível: {formatarKg(maxCruEdit)}</span>
+                  )}
+                  {errosEdit.pesoCru && <span className="campo-erro">{errosEdit.pesoCru}</span>}
+                </label>
+                <label className="campo">
+                  <span className="campo-label">
+                    Peso torrado (kg) <span className="obrig">*</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formEdit.pesoTorrado}
+                    onChange={(e) => atualizarCampoEdit('pesoTorrado', e.target.value)}
+                    placeholder="0,00"
+                  />
+                  {errosEdit.pesoTorrado && <span className="campo-erro">{errosEdit.pesoTorrado}</span>}
+                </label>
+              </div>
+
+              <div className="tr-calc">
+                <div className="tr-calc-item">
+                  <span className="tr-calc-label">Rendimento</span>
+                  <strong className="tr-calc-valor">{formatarPct(rendimentoEdit)}</strong>
+                </div>
+                <div className="tr-calc-item">
+                  <span className="tr-calc-label">Custo do lote / kg</span>
+                  <strong className="tr-calc-valor">{formatarMoeda(custoLoteEdit)}</strong>
+                </div>
+                <div className="tr-calc-item">
+                  <span className="tr-calc-label">Custo do torrado / kg</span>
+                  <strong className="tr-calc-valor dourado">{formatarMoeda(custoTorradoEdit)}</strong>
+                </div>
+              </div>
+
+              <div className="kx-form-linha">
+                <label className="campo">
+                  <span className="campo-label">Perfil de torra</span>
+                  <select value={formEdit.perfil} onChange={(e) => atualizarCampoEdit('perfil', e.target.value)}>
+                    {PERFIS_TORRA.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="campo">
+                  <span className="campo-label">Observação</span>
+                  <input
+                    type="text"
+                    value={formEdit.observacao}
+                    onChange={(e) => atualizarCampoEdit('observacao', e.target.value)}
+                    placeholder="Opcional"
+                  />
+                </label>
+              </div>
+
+              <div className="kx-form-acoes">
+                <button type="button" className="btn btn-ghost" onClick={() => setEditId(null)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Salvar alterações
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
