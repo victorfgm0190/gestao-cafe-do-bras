@@ -43,6 +43,14 @@ const MODULOS = [
     disponivel: false,
   },
   {
+    chave: 'integracoes',
+    nome: 'Integrações',
+    descricao: 'Bling: pedidos, produtos, estoque e financeiro.',
+    icone: '🔗',
+    rota: '/integracoes/bling',
+    disponivel: true,
+  },
+  {
     chave: 'usuarios',
     nome: 'Usuários',
     descricao: 'Usuários, perfis e permissões de acesso.',

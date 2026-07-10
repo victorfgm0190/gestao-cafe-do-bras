@@ -8,6 +8,7 @@ import EstoqueIndex from './pages/estoque/EstoqueIndex'
 import EntradaCafe from './pages/estoque/EntradaCafe'
 import Usuarios from './pages/usuarios/Usuarios'
 import Auditoria from './pages/auditoria/Auditoria'
+import Bling from './pages/integracoes/Bling'
 import TrocarSenha from './pages/TrocarSenha'
 
 function RotaProtegida({ children, permiteTrocaPendente = false }) {
@@ -79,6 +80,14 @@ export default function App() {
         element={
           <RotaProtegida>
             <Auditoria />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/integracoes/bling"
+        element={
+          <RotaProtegida>
+            <Bling />
           </RotaProtegida>
         }
       />

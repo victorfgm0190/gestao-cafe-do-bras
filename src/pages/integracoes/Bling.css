@@ -1,0 +1,192 @@
+.bl-cabecalho {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.bl-breadcrumb {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--texto-muted);
+  margin-bottom: 4px;
+}
+
+.bl-titulo {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--verde);
+}
+
+/* ---------- Status de conexão ---------- */
+.bl-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  border: var(--border);
+  background: var(--branco);
+}
+
+.bl-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--texto-muted);
+}
+
+.bl-status.on {
+  color: var(--success);
+  background: var(--success-bg);
+  border-color: transparent;
+}
+
+.bl-status.on .bl-status-dot {
+  background: var(--success);
+}
+
+.bl-status.off {
+  color: var(--texto-muted);
+}
+
+/* ---------- Aviso ---------- */
+.bl-aviso {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+
+.bl-aviso.ok {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.bl-aviso.erro {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.bl-aviso-x {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  opacity: 0.7;
+}
+
+.bl-aviso-x:hover {
+  opacity: 1;
+}
+
+/* ---------- Cards de ação ---------- */
+.bl-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.bl-card {
+  background: var(--branco);
+  border: var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.bl-card-icone {
+  font-size: 26px;
+}
+
+.bl-card h3 {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--verde);
+}
+
+.bl-card p {
+  font-size: 13.5px;
+  color: var(--texto-sec);
+  line-height: 1.5;
+  flex: 1;
+}
+
+.bl-card .btn {
+  margin-top: 6px;
+  align-self: flex-start;
+}
+
+/* ---------- Histórico ---------- */
+.bl-historico h2 {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--verde);
+  margin-bottom: 14px;
+}
+
+.bl-tabela-wrap {
+  background: var(--branco);
+  border: var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  box-shadow: var(--shadow-sm);
+}
+
+.bl-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 560px;
+}
+
+.bl-tabela thead th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--texto-muted);
+  padding: 14px 18px;
+  background: var(--creme);
+  border-bottom: var(--border);
+}
+
+.bl-tabela tbody td {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--creme);
+  font-size: 14px;
+  color: var(--texto);
+}
+
+.bl-tabela tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.bl-tabela tbody tr:hover {
+  background: rgba(240, 234, 214, 0.4);
+}
+
+.bl-vazio {
+  text-align: center;
+  color: var(--texto-muted);
+  padding: 36px 18px !important;
+}
+
+@media (max-width: 560px) {
+  .bl-cabecalho {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
