@@ -36,6 +36,14 @@ const SUBMODULOS = [
     disponivel: true,
   },
   {
+    chave: 'pa',
+    nome: 'Produtos Acabados',
+    descricao: 'Cadastro de PA, ordem de produção e estoque.',
+    icone: '☕',
+    rota: '/estoque/pa',
+    disponivel: true,
+  },
+  {
     chave: 'insumos',
     nome: 'Insumos',
     descricao: 'Embalagens, etiquetas, caixas e demais insumos.',

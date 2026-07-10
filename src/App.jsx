@@ -15,6 +15,10 @@ import InsumosSaldo from './pages/estoque/insumos/InsumosSaldo'
 import TorradoEntrada from './pages/estoque/torrado/TorradoEntrada'
 import TorradoKardex from './pages/estoque/torrado/TorradoKardex'
 import TorradoSaldo from './pages/estoque/torrado/TorradoSaldo'
+import PACadastro from './pages/estoque/pa/PACadastro'
+import OrdemProducao from './pages/estoque/pa/OrdemProducao'
+import PAEstoque from './pages/estoque/pa/PAEstoque'
+import HistoricoProducao from './pages/estoque/pa/HistoricoProducao'
 import Usuarios from './pages/usuarios/Usuarios'
 import Auditoria from './pages/auditoria/Auditoria'
 import Bling from './pages/integracoes/Bling'
@@ -145,6 +149,38 @@ export default function App() {
         element={
           <RotaProtegida>
             <TorradoSaldo />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/pa"
+        element={
+          <RotaProtegida>
+            <PACadastro />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/pa/ordem"
+        element={
+          <RotaProtegida>
+            <OrdemProducao />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/pa/estoque"
+        element={
+          <RotaProtegida>
+            <PAEstoque />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/pa/historico"
+        element={
+          <RotaProtegida>
+            <HistoricoProducao />
           </RotaProtegida>
         }
       />

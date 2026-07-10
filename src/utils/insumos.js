@@ -167,6 +167,14 @@ export function registrarMovimentacaoInsumo(input) {
   return registro
 }
 
+// Remove uma movimentação do kardex de insumos pelo id e reprocessa.
+// Usado no estorno de ordens de produção (baixa de embalagem).
+export function removerMovimentacaoInsumo(id) {
+  const movs = carregarKardex().filter((m) => m.id !== Number(id))
+  recalcularKardex(movs)
+  salvarKardex(movs)
+}
+
 // Registra uma ENTRADA de insumo: grava em insumos_entradas e lança no kardex.
 // input: { insumoId, data, quantidade, custoUnitario, fornecedor, observacao }
 export function registrarEntradaInsumo(input) {
