@@ -1,0 +1,172 @@
+:root {
+  /* Paleta Café do Brás */
+  --verde: #2C3B1F;
+  --verde-mid: #3a4f28;
+  --dourado: #C9A84C;
+  --creme: #F0EAD6;
+  --creme-escuro: #E2D9C0;
+  --branco: #FAF7F0;
+  --texto: #1a2410;
+  --texto-sec: #4a5c35;
+  --texto-muted: #7a8c6a;
+  --danger: #8B2020;
+  --danger-bg: #f9eaea;
+  --success: #2a5a2a;
+  --success-bg: #eaf3ea;
+  --warning: #7a5500;
+  --warning-bg: #fdf3e0;
+
+  /* Tokens de apoio */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow-sm: 0 1px 3px rgba(26, 36, 16, 0.08);
+  --shadow: 0 4px 16px rgba(26, 36, 16, 0.10);
+  --shadow-lg: 0 12px 40px rgba(26, 36, 16, 0.22);
+  --border: 1px solid var(--creme-escuro);
+
+  --topbar-h: 62px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', 'Inter', system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  color: var(--texto);
+  background: var(--creme);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+/* ---------- Botões reutilizáveis ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: filter 0.15s ease, transform 0.05s ease, background 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  background: var(--dourado);
+  color: var(--verde);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.06);
+}
+
+.btn-secondary {
+  background: var(--creme-escuro);
+  color: var(--texto-sec);
+}
+
+.btn-secondary:hover {
+  filter: brightness(0.97);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--texto-sec);
+  border: var(--border);
+}
+
+.btn-ghost:hover {
+  background: var(--creme);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-danger:hover {
+  filter: brightness(1.08);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---------- Badges de status ---------- */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.badge::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.badge-pago {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.badge-a-pagar {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.badge-vencido {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.badge-cancelado {
+  background: var(--creme-escuro);
+  color: var(--texto-muted);
+}

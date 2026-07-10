@@ -1,0 +1,88 @@
+.topbar {
+  height: var(--topbar-h);
+  background: var(--verde);
+  color: var(--branco);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  box-shadow: 0 2px 10px rgba(26, 36, 16, 0.25);
+}
+
+.topbar-marca {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(201, 168, 76, 0.16);
+  color: var(--dourado);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.topbar-nome {
+  font-size: 16.5px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.topbar-nome-sec {
+  font-weight: 500;
+  color: rgba(240, 234, 214, 0.6);
+}
+
+.topbar-direita {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.topbar-usuario {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.topbar-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--dourado);
+  color: var(--verde);
+  font-weight: 800;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.topbar-usuario-nome {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--creme);
+}
+
+.topbar-sair {
+  color: var(--creme);
+  border-color: rgba(240, 234, 214, 0.3);
+  padding: 7px 15px;
+}
+
+.topbar-sair:hover {
+  background: rgba(240, 234, 214, 0.1);
+}
+
+@media (max-width: 560px) {
+  .topbar-usuario-nome {
+    display: none;
+  }
+}

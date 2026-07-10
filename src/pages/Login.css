@@ -1,0 +1,137 @@
+.login-wrap {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 24px;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, var(--verde-mid), transparent 60%),
+    var(--verde);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--branco);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 36px 34px 30px;
+}
+
+.login-logo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.login-logo-icon {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: var(--verde);
+  color: var(--dourado);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 2px rgba(201, 168, 76, 0.35);
+}
+
+.login-marca {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--verde);
+  letter-spacing: 0.2px;
+}
+
+.login-sub {
+  font-size: 12.5px;
+  color: var(--texto-muted);
+  margin-top: 2px;
+}
+
+.login-divisor {
+  height: 1px;
+  background: var(--creme-escuro);
+  margin: 24px 0 20px;
+}
+
+.login-titulo {
+  font-size: 17px;
+  color: var(--texto);
+}
+
+.login-descricao {
+  font-size: 13.5px;
+  color: var(--texto-muted);
+  margin-top: 4px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.campo-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--texto-sec);
+}
+
+.campo input,
+.campo select,
+.campo textarea {
+  border: 1px solid var(--creme-escuro);
+  border-radius: var(--radius-sm);
+  padding: 11px 13px;
+  font-size: 14px;
+  color: var(--texto);
+  background: var(--branco);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.campo input:focus,
+.campo select:focus,
+.campo textarea:focus {
+  outline: none;
+  border-color: var(--dourado);
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.22);
+}
+
+.login-erro {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.login-botao {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  margin-top: 2px;
+}
+
+.login-dica {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--texto-muted);
+  margin-top: 20px;
+}
+
+.login-rodape {
+  color: rgba(240, 234, 214, 0.6);
+  font-size: 12.5px;
+}
