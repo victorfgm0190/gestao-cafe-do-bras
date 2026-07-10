@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../components/Topbar'
 import { formatarMoeda, formatarData, formatarKg, hojeISO } from '../../utils/formato'
+import { registrarLog, ACOES } from '../../utils/auditoria'
+import { nomeUsuarioAtual } from '../../utils/permissoes'
 import './EntradaCafe.css'
 
 const CHAVE_STORAGE = 'cafe_do_bras_estoque'
@@ -260,6 +262,7 @@ export default function EntradaCafe() {
       observacoes: form.observacoes.trim(),
     }
 
+    const autor = nomeUsuarioAtual()
     if (editandoId) {
       setLotes((lista) =>
         lista.map((l) => {
@@ -275,6 +278,12 @@ export default function EntradaCafe() {
           }
         }),
       )
+      registrarLog(
+        autor,
+        'Estoque MP',
+        ACOES.ALTEROU,
+        `Editou o lote de ${dados.produtor} (${formatarKg(peso)})`,
+      )
     } else {
       const novoId = lotes.reduce((max, l) => Math.max(max, l.id), 0) + 1
       const codigo = proximoCodigo(lotes, form.recebimento)
@@ -288,13 +297,26 @@ export default function EntradaCafe() {
           status: 'disponivel',
         },
       ])
+      registrarLog(
+        autor,
+        'Estoque MP',
+        ACOES.INCLUIU,
+        `Registrou entrada ${codigo} — ${dados.produtor} (${formatarKg(peso)})`,
+      )
     }
     setModalAberto(false)
   }
 
   function excluir(id) {
     if (window.confirm('Excluir este lote de entrada? Esta ação não pode ser desfeita.')) {
+      const lote = lotes.find((l) => l.id === id)
       setLotes((lista) => lista.filter((l) => l.id !== id))
+      registrarLog(
+        nomeUsuarioAtual(),
+        'Estoque MP',
+        ACOES.EXCLUIU,
+        lote ? `Excluiu o lote ${lote.codigo} — ${lote.produtor}` : 'Excluiu um lote de entrada',
+      )
     }
   }
 

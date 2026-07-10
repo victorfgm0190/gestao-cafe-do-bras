@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import Topbar from '../components/Topbar'
 import { getUsuario } from '../utils/auth'
+import { ehMaster } from '../utils/permissoes'
 import './Dashboard.css'
 
 const MODULOS = [
@@ -42,17 +43,32 @@ const MODULOS = [
     disponivel: false,
   },
   {
-    chave: 'config',
-    nome: 'Configurações',
-    descricao: 'Usuários, categorias e preferências.',
-    icone: '⚙️',
-    disponivel: false,
+    chave: 'usuarios',
+    nome: 'Usuários',
+    descricao: 'Usuários, perfis e permissões de acesso.',
+    icone: '👥',
+    rota: '/usuarios',
+    disponivel: true,
+    soMaster: true,
+  },
+  {
+    chave: 'auditoria',
+    nome: 'Auditoria',
+    descricao: 'Log imutável de operações do sistema.',
+    icone: '🛡️',
+    rota: '/auditoria',
+    disponivel: true,
+    soMaster: true,
   },
 ]
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const usuario = getUsuario()
+  const master = ehMaster()
+
+  // Módulos administrativos (soMaster) só aparecem para o perfil Master
+  const modulosVisiveis = MODULOS.filter((m) => !m.soMaster || master)
 
   function abrir(modulo) {
     if (modulo.disponivel && modulo.rota) {
@@ -74,7 +90,7 @@ export default function Dashboard() {
         </div>
 
         <div className="dash-grid">
-          {MODULOS.map((m) => (
+          {modulosVisiveis.map((m) => (
             <button
               key={m.chave}
               className={`modulo-card ${m.disponivel ? 'disponivel' : 'em-breve'}`}

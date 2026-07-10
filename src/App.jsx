@@ -5,6 +5,8 @@ import Dashboard from './pages/Dashboard'
 import ContasPagar from './pages/financeiro/ContasPagar'
 import EstoqueIndex from './pages/estoque/EstoqueIndex'
 import EntradaCafe from './pages/estoque/EntradaCafe'
+import Usuarios from './pages/usuarios/Usuarios'
+import Auditoria from './pages/auditoria/Auditoria'
 
 function RotaProtegida({ children }) {
   if (!estaLogado()) {
@@ -46,6 +48,22 @@ export default function App() {
         element={
           <RotaProtegida>
             <EntradaCafe />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/usuarios"
+        element={
+          <RotaProtegida>
+            <Usuarios />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/auditoria"
+        element={
+          <RotaProtegida>
+            <Auditoria />
           </RotaProtegida>
         }
       />

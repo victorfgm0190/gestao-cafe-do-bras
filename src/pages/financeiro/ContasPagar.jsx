@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import Topbar from '../../components/Topbar'
 import { formatarMoeda, formatarData, hojeISO } from '../../utils/formato'
+import { registrarLog, ACOES } from '../../utils/auditoria'
+import { nomeUsuarioAtual } from '../../utils/permissoes'
 import './ContasPagar.css'
 
 const CATEGORIAS = [
@@ -245,26 +247,55 @@ export default function ContasPagar() {
       observacao: form.observacao.trim(),
     }
 
+    const autor = nomeUsuarioAtual()
     if (editandoId) {
       setContas((lista) =>
         lista.map((c) => (c.id === editandoId ? { ...c, ...dados } : c)),
       )
+      registrarLog(
+        autor,
+        'Contas a Pagar',
+        ACOES.ALTEROU,
+        `Alterou a conta de ${dados.favorecido} (${formatarMoeda(dados.valor)})`,
+      )
     } else {
       const novoId = contas.reduce((max, c) => Math.max(max, c.id), 0) + 1
       setContas((lista) => [...lista, { id: novoId, ...dados }])
+      registrarLog(
+        autor,
+        'Contas a Pagar',
+        ACOES.INCLUIU,
+        `Incluiu a conta de ${dados.favorecido} (${formatarMoeda(dados.valor)})`,
+      )
     }
     setModalAberto(false)
   }
 
   function marcarPago(id) {
+    const conta = contas.find((c) => c.id === id)
     setContas((lista) =>
       lista.map((c) => (c.id === id ? { ...c, status: STATUS.PAGO } : c)),
     )
+    if (conta) {
+      registrarLog(
+        nomeUsuarioAtual(),
+        'Contas a Pagar',
+        ACOES.PAGOU,
+        `Marcou como pago: ${conta.favorecido} (${formatarMoeda(conta.valor)})`,
+      )
+    }
   }
 
   function excluir(id) {
     if (window.confirm('Excluir esta conta? Esta ação não pode ser desfeita.')) {
+      const conta = contas.find((c) => c.id === id)
       setContas((lista) => lista.filter((c) => c.id !== id))
+      registrarLog(
+        nomeUsuarioAtual(),
+        'Contas a Pagar',
+        ACOES.EXCLUIU,
+        conta ? `Excluiu a conta de ${conta.favorecido} (${formatarMoeda(conta.valor)})` : 'Excluiu uma conta',
+      )
     }
   }
 

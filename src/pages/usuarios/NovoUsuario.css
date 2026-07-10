@@ -1,0 +1,223 @@
+.nu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 36, 16, 0.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  z-index: 110;
+  overflow-y: auto;
+}
+
+.nu-modal {
+  background: var(--branco);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 760px;
+  box-shadow: var(--shadow-lg);
+  animation: nu-surge 0.16s ease-out;
+}
+
+@keyframes nu-surge {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.nu-modal-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: var(--border);
+}
+
+.nu-modal-topo h2 {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--verde);
+}
+
+.nu-fechar {
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  color: var(--texto-muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.nu-fechar:hover {
+  background: var(--creme);
+}
+
+.nu-form {
+  padding: 20px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.nu-secao {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.nu-secao-titulo {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--texto-muted);
+  padding-bottom: 8px;
+  border-bottom: var(--border);
+}
+
+.nu-form-linha {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.campo-ajuda-inline {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--texto-muted);
+}
+
+/* ---------- Indicador de força da senha ---------- */
+.nu-forca {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.nu-forca-barra {
+  flex: 1;
+  height: 6px;
+  background: var(--creme-escuro);
+  border-radius: 999px;
+  overflow: hidden;
+  max-width: 160px;
+}
+
+.nu-forca-preenchida {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+.nu-forca-fraca .nu-forca-preenchida {
+  width: 33%;
+  background: var(--danger);
+}
+
+.nu-forca-media .nu-forca-preenchida {
+  width: 66%;
+  background: var(--warning);
+}
+
+.nu-forca-forte .nu-forca-preenchida {
+  width: 100%;
+  background: var(--success);
+}
+
+.nu-forca-rotulo {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.nu-forca-fraca .nu-forca-rotulo {
+  color: var(--danger);
+}
+
+.nu-forca-media .nu-forca-rotulo {
+  color: var(--warning);
+}
+
+.nu-forca-forte .nu-forca-rotulo {
+  color: var(--success);
+}
+
+/* ---------- Grade de permissões ---------- */
+.nu-perm-wrap {
+  overflow-x: auto;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.nu-perm-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 640px;
+}
+
+.nu-perm-tabela thead th {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--texto-muted);
+  padding: 10px 6px;
+  background: var(--creme);
+  border-bottom: var(--border);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.nu-perm-tabela thead th.nu-perm-modulo {
+  text-align: left;
+  padding-left: 14px;
+}
+
+.nu-perm-tabela tbody td {
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--creme);
+  font-size: 13px;
+}
+
+.nu-perm-tabela tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.nu-perm-tabela td.nu-perm-modulo {
+  text-align: left;
+  padding-left: 14px;
+  font-weight: 700;
+  color: var(--verde);
+  white-space: nowrap;
+}
+
+.nu-perm-check {
+  text-align: center;
+}
+
+.nu-perm-check input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--verde);
+  cursor: pointer;
+}
+
+.nu-form-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+@media (max-width: 560px) {
+  .nu-form-linha {
+    grid-template-columns: 1fr;
+  }
+}

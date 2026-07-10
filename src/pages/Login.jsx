@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login } from '../utils/auth'
+import { autenticarUsuario } from '../utils/permissoes'
 import './Login.css'
 
 function IconeCafe() {
@@ -33,11 +34,12 @@ export default function Login() {
   function handleSubmit(e) {
     e.preventDefault()
     setErro('')
-    if (usuario.trim() === 'admin' && senha === 'admin') {
-      login('admin')
+    const autenticado = autenticarUsuario(usuario, senha)
+    if (autenticado) {
+      login(autenticado)
       navigate('/dashboard')
     } else {
-      setErro('Usuário ou senha inválidos. Use admin / admin.')
+      setErro('Usuário ou senha inválidos, ou usuário inativo.')
     }
   }
 
