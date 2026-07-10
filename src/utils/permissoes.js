@@ -140,6 +140,7 @@ function usuarioPadrao() {
     permissoes: permissoesPadrao(PERFIS.MASTER),
     dataCriacao: data,
     ultimoAcesso: null,
+    primeiroAcesso: false,
     protegido: true,
   }
 }
@@ -191,6 +192,16 @@ export function autenticarUsuario(identificador, senha) {
   )
   salvarUsuarios(atualizados)
   return { ...u, ultimoAcesso: dataHora }
+}
+
+// Troca a senha de um usuário e encerra a exigência de primeiro acesso.
+export function atualizarSenha(id, novaSenha) {
+  const usuarios = carregarUsuarios()
+  const atualizados = usuarios.map((u) =>
+    u.id === id ? { ...u, senha: novaSenha, primeiroAcesso: false } : u,
+  )
+  salvarUsuarios(atualizados)
+  return atualizados.find((u) => u.id === id) || null
 }
 
 // Usuário atualmente logado (objeto completo com perfil e permissões atuais)

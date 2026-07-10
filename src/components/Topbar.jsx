@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { getUsuario, logout } from '../utils/auth'
 import './Topbar.css'
@@ -26,11 +27,31 @@ function IconeCafe() {
 export default function Topbar() {
   const navigate = useNavigate()
   const usuario = getUsuario()
+  const [menuAberto, setMenuAberto] = useState(false)
+  const menuRef = useRef(null)
+
+  // Fecha o menu ao clicar fora
+  useEffect(() => {
+    function aoClicarFora(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuAberto(false)
+      }
+    }
+    document.addEventListener('mousedown', aoClicarFora)
+    return () => document.removeEventListener('mousedown', aoClicarFora)
+  }, [])
 
   function handleSair() {
     logout()
     navigate('/')
   }
+
+  function handleTrocarSenha() {
+    setMenuAberto(false)
+    navigate('/trocar-senha')
+  }
+
+  const nome = usuario?.usuario || 'visitante'
 
   return (
     <header className="topbar">
@@ -43,14 +64,32 @@ export default function Topbar() {
         </span>
       </Link>
 
-      <div className="topbar-direita">
-        <span className="topbar-usuario">
-          <span className="topbar-avatar">{(usuario?.usuario || '?').charAt(0).toUpperCase()}</span>
-          <span className="topbar-usuario-nome">{usuario?.usuario || 'visitante'}</span>
-        </span>
-        <button className="btn btn-ghost topbar-sair" onClick={handleSair}>
-          Sair
+      <div className="topbar-direita" ref={menuRef}>
+        <button
+          className="topbar-usuario"
+          onClick={() => setMenuAberto((v) => !v)}
+          aria-haspopup="menu"
+          aria-expanded={menuAberto}
+        >
+          <span className="topbar-avatar">{nome.charAt(0).toUpperCase()}</span>
+          <span className="topbar-usuario-nome">{nome}</span>
+          <span className={`topbar-caret ${menuAberto ? 'aberto' : ''}`}>▾</span>
         </button>
+
+        {menuAberto && (
+          <div className="topbar-menu" role="menu">
+            <button className="topbar-menu-item" role="menuitem" onClick={handleTrocarSenha}>
+              🔑 Trocar senha
+            </button>
+            <button
+              className="topbar-menu-item topbar-menu-sair"
+              role="menuitem"
+              onClick={handleSair}
+            >
+              ⏻ Sair
+            </button>
+          </div>
+        )}
       </div>
     </header>
   )

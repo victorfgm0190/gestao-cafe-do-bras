@@ -1,11 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import {
   LISTA_PERFIS,
   MODULOS,
   PERMISSOES,
   PERFIS,
   permissoesPadrao,
-  forcaSenha,
 } from '../../utils/permissoes'
 import './NovoUsuario.css'
 
@@ -15,7 +14,6 @@ function estadoInicial(usuario) {
       nome: usuario.nome || '',
       email: usuario.email || '',
       telefone: usuario.telefone || '',
-      senha: '',
       status: usuario.status || 'ativo',
       perfil: usuario.perfil || PERFIS.CONSULTA,
       permissoes: usuario.permissoes || permissoesPadrao(usuario.perfil),
@@ -25,7 +23,6 @@ function estadoInicial(usuario) {
     nome: '',
     email: '',
     telefone: '',
-    senha: '',
     status: 'ativo',
     perfil: PERFIS.CONSULTA,
     permissoes: permissoesPadrao(PERFIS.CONSULTA),
@@ -36,8 +33,6 @@ export default function NovoUsuario({ usuario, onSalvar, onFechar }) {
   const editando = Boolean(usuario)
   const [form, setForm] = useState(() => estadoInicial(usuario))
   const [erros, setErros] = useState({})
-
-  const forca = useMemo(() => forcaSenha(form.senha), [form.senha])
 
   function atualizarCampo(campo, valor) {
     setForm((f) => ({ ...f, [campo]: valor }))
@@ -61,13 +56,9 @@ export default function NovoUsuario({ usuario, onSalvar, onFechar }) {
   function validar() {
     const e = {}
     if (!form.nome.trim()) e.nome = 'Informe o nome completo.'
-    if (!form.email.trim()) e.email = 'Informe o e-mail.'
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
+    // E-mail é opcional; se preenchido, precisa ser válido.
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
       e.email = 'E-mail inválido.'
-    if (!editando || form.senha) {
-      if (!form.senha) e.senha = 'Informe uma senha.'
-      else if (form.senha.length < 6) e.senha = 'A senha deve ter no mínimo 6 caracteres.'
-    }
     if (!form.perfil) e.perfil = 'Selecione um perfil.'
     setErros(e)
     return Object.keys(e).length === 0
@@ -80,7 +71,6 @@ export default function NovoUsuario({ usuario, onSalvar, onFechar }) {
       nome: form.nome.trim(),
       email: form.email.trim(),
       telefone: form.telefone.trim(),
-      senha: form.senha, // vazio ao editar = manter a senha atual
       status: form.status,
       perfil: form.perfil,
       permissoes: form.permissoes,
@@ -117,7 +107,7 @@ export default function NovoUsuario({ usuario, onSalvar, onFechar }) {
             <div className="nu-form-linha">
               <label className="campo">
                 <span className="campo-label">
-                  E-mail <span className="obrig">*</span>
+                  E-mail <span className="campo-ajuda-inline">(opcional)</span>
                 </span>
                 <input
                   type="email"
@@ -139,44 +129,23 @@ export default function NovoUsuario({ usuario, onSalvar, onFechar }) {
               </label>
             </div>
 
-            <div className="nu-form-linha">
-              <label className="campo">
-                <span className="campo-label">
-                  Senha{' '}
-                  {editando ? (
-                    <span className="campo-ajuda-inline">(deixe em branco para manter)</span>
-                  ) : (
-                    <span className="obrig">*</span>
-                  )}
-                </span>
-                <input
-                  type="password"
-                  value={form.senha}
-                  onChange={(e) => atualizarCampo('senha', e.target.value)}
-                  placeholder="Mínimo 6 caracteres"
-                />
-                {form.senha && (
-                  <div className={`nu-forca nu-forca-${forca.nivel}`}>
-                    <span className="nu-forca-barra">
-                      <span className="nu-forca-preenchida" />
-                    </span>
-                    <span className="nu-forca-rotulo">Segurança: {forca.rotulo}</span>
-                  </div>
-                )}
-                {erros.senha && <span className="campo-erro">{erros.senha}</span>}
-              </label>
+            <label className="campo">
+              <span className="campo-label">Status</span>
+              <select
+                value={form.status}
+                onChange={(e) => atualizarCampo('status', e.target.value)}
+              >
+                <option value="ativo">Ativo</option>
+                <option value="inativo">Inativo</option>
+              </select>
+            </label>
 
-              <label className="campo">
-                <span className="campo-label">Status</span>
-                <select
-                  value={form.status}
-                  onChange={(e) => atualizarCampo('status', e.target.value)}
-                >
-                  <option value="ativo">Ativo</option>
-                  <option value="inativo">Inativo</option>
-                </select>
-              </label>
-            </div>
+            {!editando && (
+              <div className="nu-aviso-senha">
+                🔑 Senha padrão: <strong>123456</strong> — o usuário deverá trocá-la no
+                primeiro acesso.
+              </div>
+            )}
           </div>
 
           <div className="nu-secao">

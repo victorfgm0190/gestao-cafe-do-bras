@@ -37,7 +37,11 @@ export default function Login() {
     const autenticado = autenticarUsuario(usuario, senha)
     if (autenticado) {
       login(autenticado)
-      navigate('/dashboard')
+      if (autenticado.primeiroAcesso) {
+        navigate('/trocar-senha')
+      } else {
+        navigate('/dashboard')
+      }
     } else {
       setErro('Usuário ou senha inválidos, ou usuário inativo.')
     }
@@ -63,12 +67,12 @@ export default function Login() {
 
         <form onSubmit={handleSubmit} className="login-form">
           <label className="campo">
-            <span className="campo-label">Usuário</span>
+            <span className="campo-label">Usuário ou e-mail</span>
             <input
               type="text"
               value={usuario}
               onChange={(e) => setUsuario(e.target.value)}
-              placeholder="admin"
+              placeholder="Usuário ou e-mail"
               autoFocus
             />
           </label>

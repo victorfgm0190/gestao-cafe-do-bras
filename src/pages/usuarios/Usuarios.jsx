@@ -90,7 +90,7 @@ export default function Usuarios() {
           nome: dados.nome,
           email: dados.email,
           telefone: dados.telefone,
-          senha: dados.senha ? dados.senha : u.senha, // vazio = mantém a atual
+          // a senha não é alterada por aqui — só pela troca de senha do próprio usuário
           status: dados.status,
           perfil: dados.perfil,
           permissoes: dados.permissoes,
@@ -104,12 +104,13 @@ export default function Usuarios() {
         nome: dados.nome,
         email: dados.email,
         telefone: dados.telefone,
-        senha: dados.senha,
+        senha: '123456', // senha padrão — trocada obrigatoriamente no primeiro acesso
         status: dados.status,
         perfil: dados.perfil,
         permissoes: dados.permissoes || permissoesPadrao(dados.perfil),
         dataCriacao: new Date().toISOString().slice(0, 10),
         ultimoAcesso: null,
+        primeiroAcesso: true,
         protegido: false,
       }
       persistir([...usuarios, novo])

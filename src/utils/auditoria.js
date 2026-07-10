@@ -12,6 +12,7 @@ export const ACOES = {
   AJUSTE_ESTOQUE: 'Ajuste de estoque',
   INVENTARIO: 'Inventário realizado',
   EXPORTOU: 'Exportou relatório',
+  TROCOU_SENHA: 'Trocou a senha',
 }
 
 export function carregarLogs() {

@@ -44,12 +44,92 @@
   display: flex;
   align-items: center;
   gap: 16px;
+  position: relative;
 }
 
 .topbar-usuario {
   display: flex;
   align-items: center;
   gap: 9px;
+  background: transparent;
+  border: 1px solid rgba(240, 234, 214, 0.2);
+  border-radius: 999px;
+  padding: 5px 12px 5px 6px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.topbar-usuario:hover {
+  background: rgba(240, 234, 214, 0.1);
+  border-color: rgba(240, 234, 214, 0.35);
+}
+
+.topbar-caret {
+  font-size: 11px;
+  color: rgba(240, 234, 214, 0.7);
+  transition: transform 0.15s ease;
+}
+
+.topbar-caret.aberto {
+  transform: rotate(180deg);
+}
+
+/* ---------- Dropdown do usuário ---------- */
+.topbar-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  min-width: 190px;
+  background: var(--branco);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 60;
+  animation: topbar-menu-surge 0.14s ease-out;
+}
+
+@keyframes topbar-menu-surge {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.topbar-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  padding: 10px 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--texto-sec);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.topbar-menu-item:hover {
+  background: var(--creme);
+  color: var(--verde);
+}
+
+.topbar-menu-sair {
+  color: var(--danger);
+}
+
+.topbar-menu-sair:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .topbar-avatar {
