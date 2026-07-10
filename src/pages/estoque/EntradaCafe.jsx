@@ -435,7 +435,7 @@ export default function EntradaCafe() {
                   </td>
                   <td className="col-num ec-saldo">{formatarKg(l.saldoDisponivel)}</td>
                   <td className="col-num">
-                    {formatarMoeda((Number(l.saldoDisponivel) || 0) * resumo.custoMedio)}
+                    {formatarMoeda((Number(l.saldoDisponivel) || 0) * (Number(l.custoPorKg) || 0))}
                   </td>
                   <td>
                     <span
