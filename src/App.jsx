@@ -12,6 +12,9 @@ import InsumosCadastro from './pages/estoque/insumos/InsumosCadastro'
 import InsumosEntrada from './pages/estoque/insumos/InsumosEntrada'
 import InsumosKardex from './pages/estoque/insumos/InsumosKardex'
 import InsumosSaldo from './pages/estoque/insumos/InsumosSaldo'
+import TorradoEntrada from './pages/estoque/torrado/TorradoEntrada'
+import TorradoKardex from './pages/estoque/torrado/TorradoKardex'
+import TorradoSaldo from './pages/estoque/torrado/TorradoSaldo'
 import Usuarios from './pages/usuarios/Usuarios'
 import Auditoria from './pages/auditoria/Auditoria'
 import Bling from './pages/integracoes/Bling'
@@ -118,6 +121,30 @@ export default function App() {
         element={
           <RotaProtegida>
             <InsumosSaldo />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/torrado"
+        element={
+          <RotaProtegida>
+            <TorradoEntrada />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/torrado/kardex"
+        element={
+          <RotaProtegida>
+            <TorradoKardex />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/torrado/saldo"
+        element={
+          <RotaProtegida>
+            <TorradoSaldo />
           </RotaProtegida>
         }
       />

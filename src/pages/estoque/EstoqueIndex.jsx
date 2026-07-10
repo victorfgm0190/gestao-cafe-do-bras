@@ -28,6 +28,14 @@ const SUBMODULOS = [
     disponivel: true,
   },
   {
+    chave: 'torrado',
+    nome: 'Café Torrado',
+    descricao: 'Torra do café cru, rendimento e estoque de PP.',
+    icone: '🔥',
+    rota: '/estoque/torrado',
+    disponivel: true,
+  },
+  {
     chave: 'insumos',
     nome: 'Insumos',
     descricao: 'Embalagens, etiquetas, caixas e demais insumos.',
