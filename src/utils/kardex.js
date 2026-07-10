@@ -85,9 +85,13 @@ function recalcular(movs) {
       saldo = novoSaldo
       m.custoUnitario = custoEntrada
     } else {
-      // Saída, perda ou ajuste sem custo: usa o custo médio vigente, que não muda.
+      // Saída, perda ou ajuste: o saldo diminui e o custo médio vigente não muda.
       saldo = saldo + q
-      m.custoUnitario = custoMedio
+      // Se a saída trouxe um custo explícito (ex.: baixa de um lote específico na
+      // torra), preserva-o; caso contrário, valoriza pelo custo médio vigente.
+      if (!(m.custoManual && Number(m.custoUnitario) > 0)) {
+        m.custoUnitario = custoMedio
+      }
     }
     m.saldoAcumulado = saldo
     m.custoMedio = custoMedio
@@ -149,9 +153,10 @@ export function registrarMovimentacao(input) {
   } else if (input.tipo === TIPOS_MOV.AJUSTE) {
     delta = input.sentido === 'positivo' ? q : -q
   }
-  // Custo unitário só entra no cálculo quando a movimentação AUMENTA o estoque.
-  const custoUnitario =
-    delta > 0 ? Number(String(input.custoUnitario).replace(',', '.')) || 0 : 0
+  // Para entradas o custo é o de compra; para saídas normalmente é derivado do custo
+  // médio, mas aceitamos um custo explícito (ex.: baixa de um lote específico na torra).
+  const custoInformado = Number(String(input.custoUnitario).replace(',', '.')) || 0
+  const custoManual = delta <= 0 && custoInformado > 0
 
   const registro = {
     id: proximoId,
@@ -159,7 +164,8 @@ export function registrarMovimentacao(input) {
     tipo: input.tipo,
     descricao: input.descricao || '',
     quantidade: delta,
-    custoUnitario,
+    custoUnitario: custoInformado,
+    custoManual,
     custoTotal: 0,
     saldoAcumulado: 0,
     custoMedio: 0,

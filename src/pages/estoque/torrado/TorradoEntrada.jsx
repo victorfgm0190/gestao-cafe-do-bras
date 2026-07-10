@@ -7,7 +7,6 @@ import { registrarLog, ACOES } from '../../../utils/auditoria'
 import { nomeUsuarioAtual } from '../../../utils/permissoes'
 import {
   lotesCruDisponiveis,
-  custoMedioCru,
   registrarTorra,
   carregarTorras,
   PERFIS_TORRA,
@@ -34,10 +33,10 @@ export default function TorradoEntrada() {
   const [form, setForm] = useState(FORM_VAZIO)
   const [erros, setErros] = useState({})
 
-  const custoCru = useMemo(() => custoMedioCru(), [])
-
   const lote = lotes.find((l) => l.id === Number(form.loteId)) || null
   const saldoLote = Number(lote?.saldoDisponivel) || 0
+  // Custo do lote selecionado (não o custo médio global do estoque de cru).
+  const custoCru = Number(lote?.custoPorKg) || 0
 
   const pesoCruNum = Number(String(form.pesoCru).replace(',', '.')) || 0
   const pesoTorradoNum = Number(String(form.pesoTorrado).replace(',', '.')) || 0
@@ -187,7 +186,7 @@ export default function TorradoEntrada() {
                 <strong className="tr-calc-valor">{formatarKg(perda > 0 ? perda : 0)}</strong>
               </div>
               <div className="tr-calc-item">
-                <span className="tr-calc-label">Custo médio cru</span>
+                <span className="tr-calc-label">Custo do lote / kg</span>
                 <strong className="tr-calc-valor">{formatarMoeda(custoCru)}</strong>
               </div>
               <div className="tr-calc-item">

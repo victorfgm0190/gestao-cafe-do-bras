@@ -166,8 +166,7 @@ function salvarTorras(lista) {
 // Registra uma torra: baixa o café cru, lança saída no kardex do cru e entrada no torrado.
 // input: { data, loteId, pesoCru, pesoTorrado, perfil, observacao }
 export function registrarTorra(input) {
-  garantirKardexCru() // garante o kardex/resumo do cru semeado
-  const custoMedio = custoMedioCru()
+  garantirKardexCru() // garante o kardex do cru semeado
 
   const pesoCru = Number(String(input.pesoCru).replace(',', '.')) || 0
   const pesoTorrado = Number(String(input.pesoTorrado).replace(',', '.')) || 0
@@ -176,6 +175,9 @@ export function registrarTorra(input) {
   const lotes = carregarLotesCru()
   const lote = lotes.find((l) => l.id === Number(input.loteId))
   if (!lote) throw new Error('Lote de café cru não encontrado.')
+
+  // Custo do próprio lote selecionado (não o custo médio global do estoque).
+  const custoLote = Number(lote.custoPorKg) || 0
 
   // (a) baixa o peso cru do lote
   const novoSaldo = Math.max(0, (Number(lote.saldoDisponivel) || 0) - pesoCru)
@@ -187,16 +189,17 @@ export function registrarTorra(input) {
     ),
   )
 
-  // (b) saída no kardex do café cru
+  // (b) saída no kardex do café cru, valorizada pelo custo do próprio lote
   registrarMovCru({
     tipo: TIPOS_MOV.SAIDA,
     data,
     descricao: `Torra ${formatarData(data)} — ${lote.codigo || 'lote'}`,
     quantidade: pesoCru,
+    custoUnitario: custoLote,
   })
 
-  // (c) custo do torrado = (peso cru × custo médio cru) / peso torrado
-  const custoTorradoUnit = pesoTorrado > 0 ? (pesoCru * custoMedio) / pesoTorrado : 0
+  // (c) custo do torrado = (peso cru × custo do lote) / peso torrado
+  const custoTorradoUnit = pesoTorrado > 0 ? (pesoCru * custoLote) / pesoTorrado : 0
 
   // (d) entrada no kardex do café torrado
   registrarMovimentacaoTorrado({
@@ -221,7 +224,7 @@ export function registrarTorra(input) {
     rendimento: pesoCru > 0 ? (pesoTorrado / pesoCru) * 100 : 0,
     perfil: input.perfil,
     observacao: (input.observacao || '').trim(),
-    custoMedioCru: custoMedio,
+    custoPorKgLote: custoLote,
     custoTorradoUnit,
   }
   salvarTorras([...torras, registro])
