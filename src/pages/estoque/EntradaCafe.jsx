@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../components/Topbar'
+import AbasCafeCru from './AbasCafeCru'
 import { formatarMoeda, formatarData, formatarKg, hojeISO } from '../../utils/formato'
 import { registrarLog, ACOES } from '../../utils/auditoria'
 import { nomeUsuarioAtual } from '../../utils/permissoes'
+import { registrarMovimentacao, TIPOS_MOV } from '../../utils/kardex'
 import './EntradaCafe.css'
 
 const CHAVE_STORAGE = 'cafe_do_bras_estoque'
@@ -303,6 +305,14 @@ export default function EntradaCafe() {
         ACOES.INCLUIU,
         `Registrou entrada ${codigo} — ${dados.produtor} (${formatarKg(peso)})`,
       )
+      // Gera a movimentação de ENTRADA no kardex e recalcula o custo médio ponderado.
+      registrarMovimentacao({
+        tipo: TIPOS_MOV.ENTRADA,
+        data: form.recebimento,
+        descricao: `${codigo} — ${dados.produtor}`,
+        quantidade: peso,
+        custoUnitario: custoPorKg,
+      })
     }
     setModalAberto(false)
   }
@@ -338,6 +348,8 @@ export default function EntradaCafe() {
             + Nova entrada
           </button>
         </div>
+
+        <AbasCafeCru />
 
         {/* Cards de resumo */}
         <div className="ec-cards">

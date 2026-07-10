@@ -6,6 +6,8 @@ import Dashboard from './pages/Dashboard'
 import ContasPagar from './pages/financeiro/ContasPagar'
 import EstoqueIndex from './pages/estoque/EstoqueIndex'
 import EntradaCafe from './pages/estoque/EntradaCafe'
+import KardexCafeCru from './pages/estoque/KardexCafeCru'
+import SaldoCafeCru from './pages/estoque/SaldoCafeCru'
 import Usuarios from './pages/usuarios/Usuarios'
 import Auditoria from './pages/auditoria/Auditoria'
 import Bling from './pages/integracoes/Bling'
@@ -64,6 +66,22 @@ export default function App() {
         element={
           <RotaProtegida>
             <EntradaCafe />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/kardex"
+        element={
+          <RotaProtegida>
+            <KardexCafeCru />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/saldo"
+        element={
+          <RotaProtegida>
+            <SaldoCafeCru />
           </RotaProtegida>
         }
       />
