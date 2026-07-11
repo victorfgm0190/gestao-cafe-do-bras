@@ -13,6 +13,8 @@ import {
   TIPOS_MOV,
   LISTA_TIPOS,
 } from '../../utils/kardex'
+import { editarEntradaCafeCru } from '../../utils/cascata'
+import RelatorioImpacto from '../../components/RelatorioImpacto'
 import './CafeCru.css'
 
 // Semeia o kardex a partir dos lotes existentes na primeira visita.
@@ -66,6 +68,12 @@ export default function KardexCafeCru() {
   const [modalAberto, setModalAberto] = useState(false)
   const [form, setForm] = useState(MOV_VAZIA)
   const [erros, setErros] = useState({})
+
+  // Edição de entrada (recálculo em cascata)
+  const [edicao, setEdicao] = useState(null) // movimentação de entrada em edição
+  const [formEdit, setFormEdit] = useState({ data: '', descricao: '', quantidade: '', custoUnitario: '' })
+  const [errosEdit, setErrosEdit] = useState({})
+  const [relatorio, setRelatorio] = useState(null)
 
   // Grupos (fazenda + variedade) presentes nas movimentações
   const grupos = useMemo(() => {
@@ -227,6 +235,53 @@ export default function KardexCafeCru() {
     setModalAberto(false)
   }
 
+  // ---- Edição de entrada com recálculo em cascata ----
+  function abrirEdicao(m) {
+    setEdicao(m)
+    setFormEdit({
+      data: m.data || '',
+      descricao: m.descricao || '',
+      quantidade: String(Math.abs(Number(m.quantidade)) || ''),
+      custoUnitario: String(Number(m.custoUnitario) || ''),
+    })
+    setErrosEdit({})
+  }
+
+  function validarEdit() {
+    const e = {}
+    const q = Number(String(formEdit.quantidade).replace(',', '.'))
+    if (!formEdit.quantidade || Number.isNaN(q) || q <= 0) e.quantidade = 'Informe a quantidade (kg).'
+    const c = Number(String(formEdit.custoUnitario).replace(',', '.'))
+    if (!formEdit.custoUnitario || Number.isNaN(c) || c < 0) e.custoUnitario = 'Informe o custo unitário.'
+    if (!formEdit.data) e.data = 'Informe a data.'
+    setErrosEdit(e)
+    return Object.keys(e).length === 0
+  }
+
+  function salvarEdicao(ev) {
+    ev.preventDefault()
+    if (!validarEdit()) return
+
+    const rel = editarEntradaCafeCru(edicao.id, {
+      data: formEdit.data,
+      descricao: formEdit.descricao.trim(),
+      quantidade: formEdit.quantidade,
+      custoUnitario: formEdit.custoUnitario,
+    })
+
+    registrarLog(
+      nomeUsuarioAtual(),
+      'Estoque MP',
+      ACOES.ALTEROU,
+      `Editou a entrada ${edicao.descricao} — custo ${formatarMoeda(rel.entrada.custoAntes)} → ${formatarMoeda(rel.entrada.custoDepois)}/kg (${rel.movimentacoesAfetadas.length} saídas recalculadas)`,
+    )
+
+    setMovs(carregarKardex())
+    setResumo(carregarEstoqueResumo())
+    setEdicao(null)
+    setRelatorio(rel)
+  }
+
   return (
     <div className="pagina">
       <Topbar />
@@ -303,12 +358,13 @@ export default function KardexCafeCru() {
                 <th className="kx-num">Custo total</th>
                 <th className="kx-num">Saldo</th>
                 <th className="kx-num">Custo médio</th>
+                <th className="kx-num">Ações</th>
               </tr>
             </thead>
             <tbody>
               {filtradas.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="kx-vazio">
+                  <td colSpan={10} className="kx-vazio">
                     Nenhuma movimentação encontrada com os filtros atuais.
                   </td>
                 </tr>
@@ -328,6 +384,15 @@ export default function KardexCafeCru() {
                   <td className="kx-num">{formatarMoeda(m.custoTotal)}</td>
                   <td className="kx-num">{formatarKg(m.saldoAcumulado)}</td>
                   <td className="kx-num">{formatarMoeda(m.custoMedio)}</td>
+                  <td className="kx-num">
+                    {m.tipo === TIPOS_MOV.ENTRADA ? (
+                      <button className="kx-limpar" onClick={() => abrirEdicao(m)}>
+                        ✎ Editar
+                      </button>
+                    ) : (
+                      <span className="cp-muted">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -441,6 +506,84 @@ export default function KardexCafeCru() {
           </div>
         </div>
       )}
+
+      {/* Modal de edição de entrada (recálculo em cascata) */}
+      {edicao && (
+        <div className="kx-overlay" onMouseDown={() => setEdicao(null)}>
+          <div className="kx-modal" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="kx-modal-topo">
+              <h2>Editar entrada</h2>
+              <button className="kx-fechar" onClick={() => setEdicao(null)} aria-label="Fechar">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={salvarEdicao} className="kx-form">
+              <p className="campo-ajuda">
+                Editar a quantidade ou o custo reprocessa todo o ledger do grupo em cascata.
+              </p>
+              <div className="kx-form-linha">
+                <label className="campo">
+                  <span className="campo-label">
+                    Data <span className="obrig">*</span>
+                  </span>
+                  <input
+                    type="date"
+                    value={formEdit.data}
+                    onChange={(e) => setFormEdit((f) => ({ ...f, data: e.target.value }))}
+                  />
+                  {errosEdit.data && <span className="campo-erro">{errosEdit.data}</span>}
+                </label>
+                <label className="campo">
+                  <span className="campo-label">
+                    Quantidade (kg) <span className="obrig">*</span>
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={formEdit.quantidade}
+                    onChange={(e) => setFormEdit((f) => ({ ...f, quantidade: e.target.value }))}
+                  />
+                  {errosEdit.quantidade && <span className="campo-erro">{errosEdit.quantidade}</span>}
+                </label>
+              </div>
+              <label className="campo">
+                <span className="campo-label">
+                  Custo unitário (R$/kg) <span className="obrig">*</span>
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formEdit.custoUnitario}
+                  onChange={(e) => setFormEdit((f) => ({ ...f, custoUnitario: e.target.value }))}
+                />
+                {errosEdit.custoUnitario && <span className="campo-erro">{errosEdit.custoUnitario}</span>}
+              </label>
+              <label className="campo">
+                <span className="campo-label">Descrição</span>
+                <input
+                  type="text"
+                  value={formEdit.descricao}
+                  onChange={(e) => setFormEdit((f) => ({ ...f, descricao: e.target.value }))}
+                />
+              </label>
+
+              <div className="kx-form-acoes">
+                <button type="button" className="btn btn-ghost" onClick={() => setEdicao(null)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Salvar e recalcular
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <RelatorioImpacto rel={relatorio} onFechar={() => setRelatorio(null)} />
     </div>
   )
 }

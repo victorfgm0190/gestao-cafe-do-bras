@@ -6,6 +6,8 @@ import { formatarMoeda, formatarData, formatarKg, hojeISO } from '../../utils/fo
 import { registrarLog, ACOES } from '../../utils/auditoria'
 import { nomeUsuarioAtual } from '../../utils/permissoes'
 import { registrarMovimentacao, TIPOS_MOV } from '../../utils/kardex'
+import { editarEntradaPorLote } from '../../utils/cascata'
+import RelatorioImpacto from '../../components/RelatorioImpacto'
 import './EntradaCafe.css'
 
 const CHAVE_STORAGE = 'cafe_do_bras_estoque'
@@ -132,6 +134,7 @@ export default function EntradaCafe() {
   const [editandoId, setEditandoId] = useState(null)
   const [form, setForm] = useState(FORM_VAZIO)
   const [erros, setErros] = useState({})
+  const [relatorio, setRelatorio] = useState(null)
 
   // Persistência
   useEffect(() => {
@@ -266,6 +269,7 @@ export default function EntradaCafe() {
 
     const autor = nomeUsuarioAtual()
     if (editandoId) {
+      const loteAtual = lotes.find((l) => l.id === editandoId)
       setLotes((lista) =>
         lista.map((l) => {
           if (l.id !== editandoId) return l
@@ -286,6 +290,18 @@ export default function EntradaCafe() {
         ACOES.ALTEROU,
         `Editou o lote de ${dados.produtor} (${formatarKg(peso)})`,
       )
+      // Atualiza a movimentação de entrada correspondente e reprocessa em cascata.
+      if (loteAtual?.codigo) {
+        const rel = editarEntradaPorLote(loteAtual.codigo, {
+          data: form.recebimento,
+          descricao: `${loteAtual.codigo} — ${dados.produtor}`,
+          produtor: dados.produtor,
+          variedade: dados.variedade,
+          quantidade: peso,
+          custoUnitario: custoPorKg,
+        })
+        if (rel) setRelatorio(rel)
+      }
     } else {
       const novoId = lotes.reduce((max, l) => Math.max(max, l.id), 0) + 1
       const codigo = proximoCodigo(lotes, form.recebimento)
@@ -752,6 +768,8 @@ export default function EntradaCafe() {
           </div>
         </div>
       )}
+
+      <RelatorioImpacto rel={relatorio} onFechar={() => setRelatorio(null)} />
     </div>
   )
 }

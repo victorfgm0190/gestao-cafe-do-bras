@@ -18,6 +18,8 @@ import {
   TIPOS_MOV,
   registrarMovimentacao as registrarMovCru,
   removerMovimentacao as removerMovCru,
+  carregarKardex as carregarKardexCru,
+  chaveGrupo,
   custoMedioGrupo,
 } from './kardex'
 import { registrarMovimentacaoTorrado, removerMovimentacaoTorrado } from './torrado'
@@ -423,6 +425,100 @@ export function estornarOrdem(ordemId) {
   // (e) remove a ordem
   salvarOrdens(ordens.filter((o) => o.id !== Number(ordem.id)))
   return ordem
+}
+
+// Ordens de produção que consumiram café de um grupo (fazenda + variedade).
+export function ordensDoGrupo(produtor, variedade) {
+  const chave = chaveGrupo(produtor, variedade)
+  return carregarOrdens().filter((o) =>
+    (o.lotes || []).some((l) => chaveGrupo(l.produtor, l.variedade) === chave),
+  )
+}
+
+// Recalcula os custos de uma ordem de produção após o recálculo em cascata do café cru.
+// O novo custo do café de cada lote vem da saída correspondente no kardex do cru (movCruId).
+// Atualiza ordens_producao, pa_estoque e pa_movimentacoes. Retorna { antes, depois } por gramatura.
+export function recalcularOrdemProducao(ordemId) {
+  const ordens = carregarOrdens()
+  const idx = ordens.findIndex((o) => o.id === Number(ordemId))
+  if (idx < 0) return null
+  const ordem = ordens[idx]
+  if (!Array.isArray(ordem.itens) || !Array.isArray(ordem.lotes)) return null // legado sem estrutura
+
+  // Novo custo do café por lote = custoUnitario atual da saída no kardex do cru.
+  const kardex = carregarKardexCru()
+  const movPorId = {}
+  for (const m of kardex) movPorId[m.id] = m
+
+  let novoCustoTotalCru = 0
+  const lotesNovos = ordem.lotes.map((l) => {
+    const mov = l.movCruId != null ? movPorId[l.movCruId] : null
+    const custoNovo = mov ? Number(mov.custoUnitario) || 0 : Number(l.custoPorKg) || 0
+    novoCustoTotalCru += (Number(l.kg) || 0) * custoNovo
+    return { ...l, custoPorKg: custoNovo, custoTotalLote: (Number(l.kg) || 0) * custoNovo }
+  })
+  const totalKgEmbalado = Number(ordem.totalKgEmbalado) || 0
+  const novoCustoKgEmbalado = totalKgEmbalado > 0 ? novoCustoTotalCru / totalKgEmbalado : 0
+
+  const antesItens = ordem.itens.map((it) => ({
+    gramatura: it.gramatura,
+    quantidade: it.quantidade,
+    custoUnitarioTotal: Number(it.custoUnitarioTotal) || 0,
+  }))
+
+  const itensNovos = ordem.itens.map((it) => {
+    const gramaturaKg = it.gramatura / 1000
+    const custoUnitarioCafe = novoCustoKgEmbalado * gramaturaKg
+    const custoUnitarioEmbalagem = Number(it.custoUnitarioEmbalagem) || 0 // embalagem não muda
+    const custoUnitarioTotal = custoUnitarioCafe + custoUnitarioEmbalagem
+    return {
+      ...it,
+      custoUnitarioCafe,
+      custoUnitarioTotal,
+      custoTotalGramatura: custoUnitarioTotal * it.quantidade,
+    }
+  })
+
+  ordens[idx] = {
+    ...ordem,
+    lotes: lotesNovos,
+    custoTotalCru: novoCustoTotalCru,
+    custoKgEmbalado: novoCustoKgEmbalado,
+    itens: itensNovos,
+    custoTotalCafe: itensNovos.reduce((s, it) => s + it.custoUnitarioCafe * it.quantidade, 0),
+    custoTotal: itensNovos.reduce((s, it) => s + it.custoTotalGramatura, 0),
+  }
+  salvarOrdens(ordens)
+
+  // Atualiza pa_estoque e pa_movimentacoes com o custo corrigido.
+  let paEstoque = carregarPAEstoque()
+  let paMov = carregarPAMovimentacoes()
+  for (const it of itensNovos) {
+    paEstoque = paEstoque.map((r) =>
+      r.id === it.paEstoqueId
+        ? { ...r, custoUnitario: it.custoUnitarioTotal, custoTotal: it.custoTotalGramatura }
+        : r,
+    )
+    paMov = paMov.map((r) =>
+      r.id === it.paMovId
+        ? { ...r, custoUnitario: it.custoUnitarioTotal, custoTotal: it.custoTotalGramatura }
+        : r,
+    )
+  }
+  salvarPAEstoque(paEstoque)
+  salvarPAMovimentacoes(paMov)
+
+  return {
+    ordemId: ordem.id,
+    data: ordem.data,
+    paNome: ordem.paNome,
+    itens: itensNovos.map((it, i) => ({
+      gramatura: it.gramatura,
+      quantidade: it.quantidade,
+      custoUnitarioAntes: antesItens[i].custoUnitarioTotal,
+      custoUnitarioDepois: it.custoUnitarioTotal,
+    })),
+  }
 }
 
 // Estoque de PA agregado por produto + gramatura (custo médio ponderado).

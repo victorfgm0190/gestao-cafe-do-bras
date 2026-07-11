@@ -238,3 +238,105 @@ export function removerMovimentacao(id) {
   salvarKardex(movs)
   salvarEstoqueResumo({ ...totaisDe(resumoGrupos), ultimaAtualizacao: agoraTexto() })
 }
+
+// Localiza a movimentação de ENTRADA correspondente a um lote (pelo código no início da descrição).
+export function acharEntradaPorCodigo(codigo) {
+  if (!codigo) return null
+  const alvo = String(codigo)
+  return (
+    carregarKardex().find(
+      (m) => m.tipo === TIPOS_MOV.ENTRADA && String(m.descricao || '').startsWith(alvo),
+    ) || null
+  )
+}
+
+// Fotografa o estado atual do ledger (por id + resumo por grupo) para servir de "antes".
+function snapshotDe(movs) {
+  const porId = {}
+  for (const m of movs) {
+    porId[m.id] = {
+      custoTotal: Number(m.custoTotal) || 0,
+      custoUnitario: Number(m.custoUnitario) || 0,
+      custoMedio: Number(m.custoMedio) || 0,
+    }
+  }
+  // resumo em cima de um clone (não muta os registros reais)
+  const resumo = recalcular(movs.map((m) => ({ ...m })))
+  return { porId, resumo }
+}
+
+// Reprocessa TODO o ledger em ordem cronológica (o recálculo é sempre do zero, por grupo)
+// e devolve um relatório do impacto no grupo informado, comparando com o snapshot "antes".
+export function reprocessarLedgerGrupo(produtor, variedade, snapshotAntes) {
+  const movs = carregarKardex()
+  const antes = snapshotAntes || snapshotDe(movs)
+
+  const resumoDepois = recalcular(movs)
+  salvarKardex(movs)
+  salvarEstoqueResumo({ ...totaisDe(resumoDepois), ultimaAtualizacao: agoraTexto() })
+
+  const chave = chaveGrupo(produtor, variedade)
+  const movimentacoesAfetadas = []
+  for (const m of movs) {
+    const a = antes.porId[m.id]
+    if (!a) continue
+    // Entradas não entram no impacto de "saídas"; interessa o que foi revalorizado.
+    if (m.tipo === TIPOS_MOV.ENTRADA) continue
+    const depoisTotal = Number(m.custoTotal) || 0
+    if (Math.abs(depoisTotal - a.custoTotal) > 1e-6) {
+      movimentacoesAfetadas.push({
+        id: m.id,
+        data: m.data,
+        tipo: m.tipo,
+        descricao: m.descricao,
+        custoTotalAntes: a.custoTotal,
+        custoTotalDepois: depoisTotal,
+      })
+    }
+  }
+
+  return {
+    custoMedioAntes: Number(antes.resumo[chave]?.custoMedio) || 0,
+    custoMedioDepois: Number(resumoDepois[chave]?.custoMedio) || 0,
+    movimentacoesAfetadas,
+    resumo: `${movimentacoesAfetadas.length} movimentação(ões) recalculada(s)`,
+  }
+}
+
+// Edita uma movimentação de ENTRADA e dispara o recálculo em cascata do grupo.
+// campos: { quantidade, custoUnitario, data, descricao, produtor, variedade }
+// Retorna o relatório de impacto (kardex).
+export function editarEntrada(id, campos = {}) {
+  const pre = carregarKardex()
+  const alvo0 = pre.find((m) => m.id === Number(id))
+  if (!alvo0) throw new Error('Entrada não encontrada no kardex.')
+  if (alvo0.tipo !== TIPOS_MOV.ENTRADA) throw new Error('A movimentação não é uma entrada.')
+
+  const snapshotAntes = snapshotDe(pre)
+  const custoAntes = Number(alvo0.custoUnitario) || 0
+
+  // Aplica a edição (ainda sem recalcular) e salva.
+  const movs = carregarKardex()
+  const alvo = movs.find((m) => m.id === Number(id))
+  if (campos.quantidade !== undefined)
+    alvo.quantidade = Math.abs(Number(String(campos.quantidade).replace(',', '.'))) || 0
+  if (campos.custoUnitario !== undefined)
+    alvo.custoUnitario = Number(String(campos.custoUnitario).replace(',', '.')) || 0
+  if (campos.data) alvo.data = campos.data
+  if (campos.descricao !== undefined) alvo.descricao = campos.descricao
+  if (campos.produtor !== undefined) alvo.produtor = campos.produtor
+  if (campos.variedade !== undefined) alvo.variedade = campos.variedade
+  alvo.grupo = chaveGrupo(alvo.produtor, alvo.variedade)
+  salvarKardex(movs)
+
+  const rel = reprocessarLedgerGrupo(alvo.produtor, alvo.variedade, snapshotAntes)
+  rel.entrada = {
+    produtor: alvo.produtor || '',
+    variedade: alvo.variedade || '',
+    grupo: alvo.grupo,
+    quantidade: Math.abs(Number(alvo.quantidade)) || 0,
+    custoAntes,
+    custoDepois: Number(alvo.custoUnitario) || 0,
+  }
+  return rel
+}
