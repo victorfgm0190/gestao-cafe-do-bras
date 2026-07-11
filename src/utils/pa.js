@@ -18,6 +18,7 @@ import {
   TIPOS_MOV,
   registrarMovimentacao as registrarMovCru,
   removerMovimentacao as removerMovCru,
+  custoMedioGrupo,
 } from './kardex'
 import { registrarMovimentacaoTorrado, removerMovimentacaoTorrado } from './torrado'
 import {
@@ -165,7 +166,9 @@ export function calcularOrdem(input) {
       const lote = lotesCru.find((l) => l.id === Number(li.loteId))
       const kg = Number(String(li.kg).replace(',', '.')) || 0
       if (!lote || kg <= 0) return null
-      const custoPorKg = Number(lote.custoPorKg) || 0
+      // Custo médio ponderado ATUAL do grupo (fazenda + variedade) do lote —
+      // não o custoPorKg fixo do lote.
+      const custoPorKg = custoMedioGrupo(lote.produtor, lote.variedade) || Number(lote.custoPorKg) || 0
       return {
         loteId: lote.id,
         loteCodigo: lote.codigo || '',

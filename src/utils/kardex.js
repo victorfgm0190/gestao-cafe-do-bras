@@ -102,11 +102,10 @@ function recalcular(movs) {
         saldo = novoSaldo
         m.custoUnitario = custoEntrada
       } else {
+        // Saída / perda / ajuste: o saldo diminui e o custo médio do grupo NÃO muda.
+        // A saída é sempre valorizada pelo custo médio ponderado VIGENTE do grupo.
         saldo = saldo + q
-        // Saída com custo explícito (baixa de lote específico) fica fixa.
-        if (!(m.custoManual && Number(m.custoUnitario) > 0)) {
-          m.custoUnitario = custoMedio
-        }
+        m.custoUnitario = custoMedio
       }
       m.saldoAcumulado = saldo
       m.custoMedio = custoMedio
@@ -176,6 +175,14 @@ export function carregarEstoqueResumo() {
   return { ...totaisDe(recalcular(carregarKardex())), ultimaAtualizacao: null }
 }
 
+// Custo médio ponderado ATUAL de um grupo (fazenda + variedade).
+// Usado pelas saídas (produção/torra) para valorizar o café cru consumido.
+export function custoMedioGrupo(produtor, variedade) {
+  garantirKardexInicial()
+  const resumo = recalcular(carregarKardex())
+  return Number(resumo[chaveGrupo(produtor, variedade)]?.custoMedio) || 0
+}
+
 // Resumo por grupo (fazenda + variedade).
 export function carregarEstoqueResumoPorGrupo() {
   const resumo = recalcular(carregarKardex())
@@ -198,8 +205,9 @@ export function registrarMovimentacao(input) {
   } else if (input.tipo === TIPOS_MOV.AJUSTE) {
     delta = input.sentido === 'positivo' ? q : -q
   }
-  const custoInformado = Number(String(input.custoUnitario).replace(',', '.')) || 0
-  const custoManual = delta <= 0 && custoInformado > 0
+  // Entradas usam o custo de compra informado; saídas são valorizadas pelo custo médio
+  // vigente do grupo (preenchido no recálculo, não no valor informado).
+  const custoInformado = delta > 0 ? Number(String(input.custoUnitario).replace(',', '.')) || 0 : 0
 
   const registro = {
     id: proximoId,
@@ -211,7 +219,6 @@ export function registrarMovimentacao(input) {
     grupo: chaveGrupo(input.produtor, input.variedade),
     quantidade: delta,
     custoUnitario: custoInformado,
-    custoManual,
     custoTotal: 0,
     saldoAcumulado: 0,
     custoMedio: 0,

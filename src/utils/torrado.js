@@ -16,6 +16,7 @@ import {
   removerMovimentacao as removerMovCru,
   carregarKardex as carregarKardexCru,
   carregarEstoqueResumo as carregarResumoCru,
+  custoMedioGrupo,
   garantirKardexInicial as garantirKardexCru,
 } from './kardex'
 
@@ -199,8 +200,8 @@ export function registrarTorra(input) {
   const lote = lotes.find((l) => l.id === Number(input.loteId))
   if (!lote) throw new Error('Lote de café cru não encontrado.')
 
-  // Custo do próprio lote selecionado (não o custo médio global do estoque).
-  const custoLote = Number(lote.custoPorKg) || 0
+  // Custo médio ponderado ATUAL do grupo (fazenda + variedade) do lote.
+  const custoLote = custoMedioGrupo(lote.produtor, lote.variedade) || Number(lote.custoPorKg) || 0
 
   // (a) baixa o peso cru do lote
   const novoSaldo = Math.max(0, (Number(lote.saldoDisponivel) || 0) - pesoCru)
