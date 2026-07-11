@@ -62,6 +62,76 @@
   background: var(--danger-bg);
 }
 
+/* Quantidades por gramatura (etapa 1) */
+.pa-gram-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.pa-gram-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--creme);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+}
+
+.pa-gram-nome {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--verde);
+}
+
+.pa-gram-card input {
+  border: 1px solid var(--creme-escuro);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 14px;
+  background: var(--branco);
+}
+
+/* Detalhamento de custo por gramatura (etapa 4 / histórico) */
+.pa-gram-detalhes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin: 16px 0;
+}
+
+.pa-gram-box {
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.pa-gram-box-titulo {
+  background: var(--verde);
+  color: var(--creme);
+  font-weight: 800;
+  font-size: 14px;
+  padding: 10px 14px;
+}
+
+.pa-gram-linha {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 14px;
+  font-size: 13.5px;
+  color: var(--texto-sec);
+  border-bottom: 1px solid var(--creme);
+}
+
+.pa-gram-linha.total {
+  font-weight: 800;
+  color: var(--verde);
+  background: var(--creme);
+  border-bottom: none;
+}
+
 /* Saldo disponível do lote selecionado */
 .pa-disp {
   font-size: 12.5px;

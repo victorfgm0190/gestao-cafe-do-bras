@@ -1,13 +1,15 @@
-// Kardex do café cru com custo médio ponderado.
+// Kardex do café cru com custo médio ponderado ISOLADO por fazenda (produtor) + variedade.
+//
+// Regra de custeio: o custo médio só agrega lotes do mesmo grupo (produtor + variedade).
+// Cafés diferentes têm custos separados — nunca misturados.
 //
 // Estruturas no localStorage:
 //   kardex_cafe_cru  → array de movimentações
-//     { id, data, tipo, descricao, quantidade, custoUnitario, custoTotal, saldoAcumulado, custoMedio }
-//     obs.: `quantidade` é o efeito no saldo (positivo = entra, negativo = sai).
-//   estoque_cafe_cru → { saldoAtual, custoMedio, ultimaAtualizacao }
-//
-// O custo médio é recalculado a cada ENTRADA:
-//   custoMedio = (saldoAnt * custoMedioAnt + qtdEntrada * custoEntrada) / novoSaldo
+//     { id, data, tipo, descricao, produtor, variedade, grupo, quantidade,
+//       custoUnitario, custoTotal, saldoAcumulado, custoMedio }
+//     obs.: `quantidade` é o efeito no saldo (positivo = entra, negativo = sai);
+//           `saldoAcumulado`/`custoMedio` são corridos DENTRO do grupo.
+//   estoque_cafe_cru → { saldoAtual, custoMedio, ultimaAtualizacao } (total geral, p/ dashboard)
 
 import { hojeISO } from './formato'
 
@@ -28,6 +30,11 @@ export const LISTA_TIPOS = [
   TIPOS_MOV.AJUSTE,
   TIPOS_MOV.PERDA,
 ]
+
+// Chave do grupo de custeio: fazenda (produtor) + variedade.
+export function chaveGrupo(produtor, variedade) {
+  return `${(produtor || '').trim()}|${(variedade || '').trim()}`
+}
 
 function agoraTexto() {
   const d = new Date()
@@ -65,43 +72,72 @@ function carregarLotes() {
 }
 
 // ---------- Núcleo do cálculo ----------
-// Ordena por data (asc) e, no empate, por id (asc) — garante o saldo corrido correto.
 function ordenar(a, b) {
   return (a.data || '').localeCompare(b.data || '') || (a.id || 0) - (b.id || 0)
 }
 
-// Percorre as movimentações em ordem cronológica, preenchendo custoUnitario,
-// custoTotal, saldoAcumulado e custoMedio. Muta os registros e devolve os totais.
-function recalcular(movs) {
-  let saldo = 0
-  let custoMedio = 0
-  for (const m of movs) {
-    const q = Number(m.quantidade) || 0
-    const custoEntrada = Number(m.custoUnitario) || 0
-    // Entrada de estoque com custo → recalcula o custo médio ponderado.
-    if (q > 0 && custoEntrada > 0) {
-      const novoSaldo = saldo + q
-      custoMedio = novoSaldo > 0 ? (saldo * custoMedio + q * custoEntrada) / novoSaldo : 0
-      saldo = novoSaldo
-      m.custoUnitario = custoEntrada
-    } else {
-      // Saída, perda ou ajuste: o saldo diminui e o custo médio vigente não muda.
-      saldo = saldo + q
-      // Se a saída trouxe um custo explícito (ex.: baixa de um lote específico na
-      // torra), preserva-o; caso contrário, valoriza pelo custo médio vigente.
-      if (!(m.custoManual && Number(m.custoUnitario) > 0)) {
-        m.custoUnitario = custoMedio
-      }
-    }
-    m.saldoAcumulado = saldo
-    m.custoMedio = custoMedio
-    m.custoTotal = Math.abs(q) * m.custoUnitario
-  }
-  return { saldoAtual: saldo, custoMedio }
+function grupoDe(m) {
+  return m.grupo || chaveGrupo(m.produtor, m.variedade)
 }
 
-// Semeia o kardex a partir dos lotes de café cru já cadastrados (uma única vez).
-// Só grava quando há lotes — se ainda não houver, tenta de novo numa próxima chamada.
+// Reprocessa o kardex agrupando por (produtor + variedade). Muta os registros
+// (saldoAcumulado/custoMedio/custoTotal corridos DENTRO do grupo) e devolve o mapa
+// grupo → { chave, produtor, variedade, saldoAtual, custoMedio, valorTotal }.
+function recalcular(movs) {
+  const grupos = {}
+  for (const m of movs) {
+    const chave = grupoDe(m)
+    ;(grupos[chave] = grupos[chave] || []).push(m)
+  }
+  const resumo = {}
+  for (const chave of Object.keys(grupos)) {
+    let saldo = 0
+    let custoMedio = 0
+    for (const m of grupos[chave].sort(ordenar)) {
+      const q = Number(m.quantidade) || 0
+      const custoEntrada = Number(m.custoUnitario) || 0
+      if (q > 0 && custoEntrada > 0) {
+        const novoSaldo = saldo + q
+        custoMedio = novoSaldo > 0 ? (saldo * custoMedio + q * custoEntrada) / novoSaldo : 0
+        saldo = novoSaldo
+        m.custoUnitario = custoEntrada
+      } else {
+        saldo = saldo + q
+        // Saída com custo explícito (baixa de lote específico) fica fixa.
+        if (!(m.custoManual && Number(m.custoUnitario) > 0)) {
+          m.custoUnitario = custoMedio
+        }
+      }
+      m.saldoAcumulado = saldo
+      m.custoMedio = custoMedio
+      m.custoTotal = Math.abs(q) * m.custoUnitario
+    }
+    const rep = grupos[chave].find((x) => x.produtor || x.variedade) || {}
+    resumo[chave] = {
+      chave,
+      produtor: rep.produtor || '',
+      variedade: rep.variedade || '',
+      saldoAtual: saldo,
+      custoMedio,
+      valorTotal: saldo * custoMedio,
+    }
+  }
+  return resumo
+}
+
+// Totais gerais a partir do mapa por grupo.
+function totaisDe(resumoGrupos) {
+  let saldo = 0
+  let valor = 0
+  for (const g of Object.values(resumoGrupos)) {
+    saldo += g.saldoAtual
+    valor += g.valorTotal
+  }
+  return { saldoAtual: saldo, custoMedio: saldo > 0 ? valor / saldo : 0 }
+}
+
+// Semeia o kardex a partir dos lotes já cadastrados (uma única vez), um registro por lote
+// já vinculado ao seu grupo (produtor + variedade).
 export function garantirKardexInicial() {
   if (localStorage.getItem(CHAVE_KARDEX) !== null) return
   const lotes = carregarLotes()
@@ -114,6 +150,9 @@ export function garantirKardexInicial() {
       data: l.recebimento,
       tipo: TIPOS_MOV.ENTRADA,
       descricao: `${l.codigo || 'Lote'} — ${l.produtor || ''}`.trim(),
+      produtor: l.produtor || '',
+      variedade: l.variedade || '',
+      grupo: chaveGrupo(l.produtor, l.variedade),
       quantidade: Number(l.pesoTotal) || 0,
       custoUnitario: Number(l.custoPorKg) || 0,
       custoTotal: 0,
@@ -121,12 +160,12 @@ export function garantirKardexInicial() {
       custoMedio: 0,
     }))
 
-  const { saldoAtual, custoMedio } = recalcular(movs)
+  const resumoGrupos = recalcular(movs)
   salvarKardex(movs)
-  salvarEstoqueResumo({ saldoAtual, custoMedio, ultimaAtualizacao: agoraTexto() })
+  salvarEstoqueResumo({ ...totaisDe(resumoGrupos), ultimaAtualizacao: agoraTexto() })
 }
 
-// Resumo atual do estoque (saldo e custo médio). Deriva do kardex se necessário.
+// Resumo TOTAL do estoque (saldo e custo médio geral) — usado no dashboard.
 export function carregarEstoqueResumo() {
   try {
     const bruto = localStorage.getItem(CHAVE_ESTOQUE)
@@ -134,13 +173,19 @@ export function carregarEstoqueResumo() {
   } catch {
     /* ignora e deriva abaixo */
   }
-  const { saldoAtual, custoMedio } = recalcular(carregarKardex())
-  return { saldoAtual, custoMedio, ultimaAtualizacao: null }
+  return { ...totaisDe(recalcular(carregarKardex())), ultimaAtualizacao: null }
+}
+
+// Resumo por grupo (fazenda + variedade).
+export function carregarEstoqueResumoPorGrupo() {
+  const resumo = recalcular(carregarKardex())
+  return Object.values(resumo)
+    .filter((g) => g.saldoAtual > 1e-9 || g.valorTotal > 1e-9)
+    .sort((a, b) => (a.produtor || '').localeCompare(b.produtor || '') || (a.variedade || '').localeCompare(b.variedade || ''))
 }
 
 // Registra uma movimentação e reprocessa o kardex + o resumo.
-// input: { tipo, descricao, quantidade (magnitude positiva), custoUnitario, data, sentido }
-//   - sentido só é usado no Ajuste: 'positivo' | 'negativo' (padrão negativo)
+// input: { tipo, descricao, quantidade, custoUnitario, data, sentido, produtor, variedade }
 export function registrarMovimentacao(input) {
   garantirKardexInicial()
   const movs = carregarKardex()
@@ -153,8 +198,6 @@ export function registrarMovimentacao(input) {
   } else if (input.tipo === TIPOS_MOV.AJUSTE) {
     delta = input.sentido === 'positivo' ? q : -q
   }
-  // Para entradas o custo é o de compra; para saídas normalmente é derivado do custo
-  // médio, mas aceitamos um custo explícito (ex.: baixa de um lote específico na torra).
   const custoInformado = Number(String(input.custoUnitario).replace(',', '.')) || 0
   const custoManual = delta <= 0 && custoInformado > 0
 
@@ -163,6 +206,9 @@ export function registrarMovimentacao(input) {
     data: input.data || hojeISO(),
     tipo: input.tipo,
     descricao: input.descricao || '',
+    produtor: input.produtor || '',
+    variedade: input.variedade || '',
+    grupo: chaveGrupo(input.produtor, input.variedade),
     quantidade: delta,
     custoUnitario: custoInformado,
     custoManual,
@@ -172,17 +218,16 @@ export function registrarMovimentacao(input) {
   }
 
   const todos = [...movs, registro].sort(ordenar)
-  const { saldoAtual, custoMedio } = recalcular(todos)
+  const resumoGrupos = recalcular(todos)
   salvarKardex(todos)
-  salvarEstoqueResumo({ saldoAtual, custoMedio, ultimaAtualizacao: agoraTexto() })
+  salvarEstoqueResumo({ ...totaisDe(resumoGrupos), ultimaAtualizacao: agoraTexto() })
   return registro
 }
 
 // Remove uma movimentação pelo id e reprocessa o kardex + o resumo.
-// Usado no estorno de torras (a saída gerada é removida).
 export function removerMovimentacao(id) {
   const movs = carregarKardex().filter((m) => m.id !== Number(id))
-  const { saldoAtual, custoMedio } = recalcular(movs)
+  const resumoGrupos = recalcular(movs)
   salvarKardex(movs)
-  salvarEstoqueResumo({ saldoAtual, custoMedio, ultimaAtualizacao: agoraTexto() })
+  salvarEstoqueResumo({ ...totaisDe(resumoGrupos), ultimaAtualizacao: agoraTexto() })
 }

@@ -305,11 +305,14 @@ export default function EntradaCafe() {
         ACOES.INCLUIU,
         `Registrou entrada ${codigo} — ${dados.produtor} (${formatarKg(peso)})`,
       )
-      // Gera a movimentação de ENTRADA no kardex e recalcula o custo médio ponderado.
+      // Gera a movimentação de ENTRADA no kardex, vinculada ao grupo (fazenda + variedade),
+      // e recalcula o custo médio ponderado do grupo.
       registrarMovimentacao({
         tipo: TIPOS_MOV.ENTRADA,
         data: form.recebimento,
         descricao: `${codigo} — ${dados.produtor}`,
+        produtor: dados.produtor,
+        variedade: dados.variedade,
         quantidade: peso,
         custoUnitario: custoPorKg,
       })

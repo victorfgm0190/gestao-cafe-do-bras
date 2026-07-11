@@ -1,13 +1,17 @@
 // Produtos Acabados (PA) + Ordem de Produção.
 //
+// Custeio (correções):
+//  - Todo o custo do café cru vai para os pacotes EMBALADOS.
+//  - custoKgEmbalado = custoTotalCru / totalKgEmbalado
+//  - A sobra de torrado entra no estoque de torrado com custo ZERO (só quantidade).
+//  - Custo por pacote = (custoKgEmbalado × gramatura_kg) + custo médio da embalagem da gramatura.
+//  - Uma ordem pode produzir várias gramaturas de uma vez.
+//
 // localStorage:
 //   pa_cadastro       → [{ id, nome, gramaturas:[g], embalagem250Id, embalagem1000Id, ativo }]
 //   pa_estoque        → [{ id, paId, gramatura, quantidade, custoUnitario, custoTotal, data, ordemId }]
 //   pa_movimentacoes  → histórico de movimentações de PA (entrada por produção)
-//   ordens_producao   → histórico completo das ordens (com refs para estorno)
-//
-// Uma Ordem de Produção consome café cru (mix de lotes), pode gerar sobra de torrado,
-// baixa embalagens e produz pacotes de PA.
+//   ordens_producao   → histórico completo das ordens (itens por gramatura + refs p/ estorno)
 
 import { hojeISO } from './formato'
 import {
@@ -75,7 +79,6 @@ export function proximoIdPA(lista) {
   return lista.reduce((max, p) => Math.max(max, p.id || 0), 0) + 1
 }
 
-// Resolve o insumo de embalagem por nome (para vincular novos PAs automaticamente).
 export function embalagensPadrao() {
   const insumos = carregarInsumos()
   return {
@@ -84,7 +87,6 @@ export function embalagensPadrao() {
   }
 }
 
-// Insumo de embalagem correspondente a uma gramatura do PA.
 export function embalagemDoPA(pa, gramatura) {
   if (Number(gramatura) === 250) return pa?.embalagem250Id ?? null
   if (Number(gramatura) === 1000) return pa?.embalagem1000Id ?? null
@@ -150,16 +152,13 @@ function salvarOrdens(lista) {
   localStorage.setItem(CHAVE_ORDENS, JSON.stringify(lista))
 }
 
-// Calcula os números de uma ordem sem persistir (para prévia na tela).
-// input: { paId, gramatura, quantidade, lotes:[{loteId, kg}], sobra }
+// Calcula os números de uma ordem sem persistir (prévia na tela).
+// input: { paId, itens:[{gramatura, quantidade}], lotes:[{loteId, kg}], sobra }
 export function calcularOrdem(input) {
   const pa = carregarPA().find((p) => p.id === Number(input.paId)) || null
-  const gramatura = Number(input.gramatura) || 0
-  const quantidade = Number(input.quantidade) || 0
   const sobra = Number(String(input.sobra).replace(',', '.')) || 0
 
-  const embaladoKg = (quantidade * gramatura) / 1000
-
+  // Lotes usados (com custo do próprio lote)
   const lotesCru = carregarLotesCru()
   const lotes = (input.lotes || [])
     .map((li) => {
@@ -171,6 +170,7 @@ export function calcularOrdem(input) {
         loteId: lote.id,
         loteCodigo: lote.codigo || '',
         produtor: lote.produtor || '',
+        variedade: lote.variedade || '',
         saldoDisponivel: Number(lote.saldoDisponivel) || 0,
         kg,
         custoPorKg,
@@ -180,51 +180,73 @@ export function calcularOrdem(input) {
     .filter(Boolean)
 
   const totalCru = lotes.reduce((s, l) => s + l.kg, 0)
-  const custoCruTotal = lotes.reduce((s, l) => s + l.custoTotalLote, 0)
-  const perda = totalCru - embaladoKg - sobra
-  const bomTorrado = embaladoKg + sobra // torrado aproveitado (embalado + sobra)
-  const custoPorKgTorrado = bomTorrado > 0 ? custoCruTotal / bomTorrado : 0
+  const custoTotalCru = lotes.reduce((s, l) => s + l.custoTotalLote, 0)
 
-  const custoMateriaPrima = embaladoKg * custoPorKgTorrado
-  const custoSobra = sobra * custoPorKgTorrado
+  // Itens por gramatura
+  const resumoIns = resumoPorInsumo()
+  const insumos = carregarInsumos()
+  const itensBrutos = (input.itens || [])
+    .map((it) => ({
+      gramatura: Number(it.gramatura) || 0,
+      quantidade: Number(it.quantidade) || 0,
+    }))
+    .filter((it) => it.gramatura > 0 && it.quantidade > 0)
 
-  const embalagemId = embalagemDoPA(pa, gramatura)
-  const custoEmbUnit = embalagemId ? Number(resumoPorInsumo()[embalagemId]?.custoMedio) || 0 : 0
-  const custoEmbalagens = quantidade * custoEmbUnit
+  const totalKgEmbalado = itensBrutos.reduce((s, it) => s + (it.quantidade * it.gramatura) / 1000, 0)
+  const custoKgEmbalado = totalKgEmbalado > 0 ? custoTotalCru / totalKgEmbalado : 0
 
-  const custoTotal = custoMateriaPrima + custoEmbalagens
-  const custoUnitario = quantidade > 0 ? custoTotal / quantidade : 0
+  const itens = itensBrutos.map((it) => {
+    const gramaturaKg = it.gramatura / 1000
+    const embalagemId = embalagemDoPA(pa, it.gramatura)
+    const embNome = embalagemId ? insumos.find((i) => i.id === embalagemId)?.nome || 'Embalagem' : null
+    const custoUnitarioCafe = custoKgEmbalado * gramaturaKg
+    const custoUnitarioEmbalagem = embalagemId ? Number(resumoIns[embalagemId]?.custoMedio) || 0 : 0
+    const custoUnitarioTotal = custoUnitarioCafe + custoUnitarioEmbalagem
+    return {
+      gramatura: it.gramatura,
+      quantidade: it.quantidade,
+      embaladoKg: it.quantidade * gramaturaKg,
+      embalagemId,
+      embNome,
+      custoUnitarioCafe,
+      custoUnitarioEmbalagem,
+      custoUnitarioTotal,
+      custoTotalCafe: custoUnitarioCafe * it.quantidade,
+      custoTotalEmbalagem: custoUnitarioEmbalagem * it.quantidade,
+      custoTotalGramatura: custoUnitarioTotal * it.quantidade,
+    }
+  })
+
+  const perda = totalCru - totalKgEmbalado - sobra
+  const custoTotalCafe = itens.reduce((s, it) => s + it.custoTotalCafe, 0)
+  const custoTotalEmbalagens = itens.reduce((s, it) => s + it.custoTotalEmbalagem, 0)
 
   return {
     pa,
-    gramatura,
-    quantidade,
-    embaladoKg,
-    sobra,
-    perda,
     lotes,
     totalCru,
-    custoCruTotal,
-    custoPorKgTorrado,
-    custoMateriaPrima,
-    custoSobra,
-    embalagemId,
-    custoEmbUnit,
-    custoEmbalagens,
-    custoTotal,
-    custoUnitario,
+    custoTotalCru,
+    totalKgEmbalado,
+    custoKgEmbalado,
+    itens,
+    sobra,
+    perda,
+    custoTotalCafe,
+    custoTotalEmbalagens,
+    custoTotalGeral: custoTotalCafe + custoTotalEmbalagens,
   }
 }
 
-// Registra a ordem: baixa cru, gera sobra torrada, baixa embalagens e produz PA.
+// Registra a ordem: baixa cru, gera sobra (custo zero), baixa embalagens por gramatura
+// e produz os pacotes de PA.
 export function registrarOrdem(input) {
   const data = input.data || hojeISO()
   const calc = calcularOrdem(input)
-  const { pa, gramatura, quantidade, embaladoKg, sobra, perda, lotes } = calc
+  const { pa, lotes, sobra, itens } = calc
 
-  const descBase = `Produção ${data} — ${pa?.nome || 'PA'} ${formatarGramatura(gramatura)}`
+  const descBase = `Produção ${data} — ${pa?.nome || 'PA'}`
 
-  // (a) baixa cada lote de café cru + saída no kardex do cru (custo do próprio lote)
+  // (a) baixa cada lote de café cru + saída no kardex do cru (custo e grupo do lote)
   const lotesCru = carregarLotesCru()
   let lotesAtual = lotesCru
   const lotesUsados = lotes.map((l) => {
@@ -239,6 +261,8 @@ export function registrarOrdem(input) {
       tipo: TIPOS_MOV.SAIDA,
       data,
       descricao: descBase,
+      produtor: l.produtor,
+      variedade: l.variedade,
       quantidade: l.kg,
       custoUnitario: l.custoPorKg,
     })
@@ -246,99 +270,113 @@ export function registrarOrdem(input) {
   })
   salvarLotesCru(lotesAtual)
 
-  // (b) sobra torrada → entrada no kardex do torrado
+  // (b) sobra torrada → entrada no kardex do torrado com custo ZERO
   let movTorradoId = null
   if (sobra > 0) {
     const mov = registrarMovimentacaoTorrado({
       tipo: TIPOS_MOV.ENTRADA,
       data,
-      descricao: `${descBase} — sobra de torra`,
+      descricao: `${descBase} — sobra de torra (custo zero)`,
       quantidade: sobra,
-      custoUnitario: calc.custoPorKgTorrado,
+      custoUnitario: 0,
     })
     movTorradoId = mov?.id ?? null
   }
 
-  // (c) baixa embalagens no kardex de insumos
-  let movInsumoId = null
-  if (calc.embalagemId && quantidade > 0) {
-    const mov = registrarMovimentacaoInsumo({
-      insumoId: calc.embalagemId,
-      tipo: TIPOS_MOV.SAIDA,
-      data,
-      descricao: descBase,
-      quantidade,
-    })
-    movInsumoId = mov?.id ?? null
-  }
-
-  // (d) registro no estoque de PA + movimentação
-  const paEstoque = carregarPAEstoque()
-  const paEstoqueId = paEstoque.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1
-  const paMov = carregarPAMovimentacoes()
-  const paMovId = paMov.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1
-
+  // (c/d) por gramatura: baixa embalagem + registro no estoque de PA
+  let paEstoque = carregarPAEstoque()
+  let paMov = carregarPAMovimentacoes()
   const ordens = carregarOrdens()
   const ordemId = ordens.reduce((m, o) => Math.max(m, o.id || 0), 0) + 1
+  let nextEstoqueId = paEstoque.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1
+  let nextMovId = paMov.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1
 
-  const registroEstoque = {
-    id: paEstoqueId,
-    paId: pa?.id ?? null,
-    gramatura,
-    quantidade,
-    custoUnitario: calc.custoUnitario,
-    custoTotal: calc.custoTotal,
-    data,
-    ordemId,
-  }
-  salvarPAEstoque([...paEstoque, registroEstoque])
-  salvarPAMovimentacoes([
-    ...paMov,
-    {
-      id: paMovId,
-      ordemId,
-      data,
-      tipo: TIPOS_MOV.ENTRADA,
+  const itensOrdem = itens.map((it) => {
+    // baixa embalagem no kardex de insumos
+    let movInsumoId = null
+    if (it.embalagemId && it.quantidade > 0) {
+      const mov = registrarMovimentacaoInsumo({
+        insumoId: it.embalagemId,
+        tipo: TIPOS_MOV.SAIDA,
+        data,
+        descricao: `${descBase} ${formatarGramatura(it.gramatura)}`,
+        quantidade: it.quantidade,
+      })
+      movInsumoId = mov?.id ?? null
+    }
+
+    const paEstoqueId = nextEstoqueId++
+    const paMovId = nextMovId++
+    const registroEstoque = {
+      id: paEstoqueId,
       paId: pa?.id ?? null,
-      paNome: pa?.nome || '',
-      gramatura,
-      quantidade,
-      custoUnitario: calc.custoUnitario,
-      custoTotal: calc.custoTotal,
-    },
-  ])
+      gramatura: it.gramatura,
+      quantidade: it.quantidade,
+      custoUnitario: it.custoUnitarioTotal,
+      custoTotal: it.custoTotalGramatura,
+      data,
+      ordemId,
+    }
+    paEstoque = [...paEstoque, registroEstoque]
+    paMov = [
+      ...paMov,
+      {
+        id: paMovId,
+        ordemId,
+        data,
+        tipo: TIPOS_MOV.ENTRADA,
+        paId: pa?.id ?? null,
+        paNome: pa?.nome || '',
+        gramatura: it.gramatura,
+        quantidade: it.quantidade,
+        custoUnitario: it.custoUnitarioTotal,
+        custoTotal: it.custoTotalGramatura,
+      },
+    ]
 
-  // (e) histórico da ordem (com refs para estorno)
+    return {
+      gramatura: it.gramatura,
+      quantidade: it.quantidade,
+      embaladoKg: it.embaladoKg,
+      embalagemId: it.embalagemId,
+      embNome: it.embNome,
+      custoUnitarioCafe: it.custoUnitarioCafe,
+      custoUnitarioEmbalagem: it.custoUnitarioEmbalagem,
+      custoUnitarioTotal: it.custoUnitarioTotal,
+      custoTotalGramatura: it.custoTotalGramatura,
+      movInsumoId,
+      paEstoqueId,
+      paMovId,
+    }
+  })
+
+  salvarPAEstoque(paEstoque)
+  salvarPAMovimentacoes(paMov)
+
+  // (e) histórico da ordem
   const ordem = {
     id: ordemId,
     data,
     paId: pa?.id ?? null,
     paNome: pa?.nome || '',
-    gramatura,
-    quantidade,
-    embaladoKg,
-    sobra,
-    perda,
     totalCru: calc.totalCru,
-    custoCruTotal: calc.custoCruTotal,
-    custoPorKgTorrado: calc.custoPorKgTorrado,
-    custoMateriaPrima: calc.custoMateriaPrima,
-    custoEmbalagens: calc.custoEmbalagens,
-    custoTotal: calc.custoTotal,
-    custoUnitario: calc.custoUnitario,
+    custoTotalCru: calc.custoTotalCru,
+    totalKgEmbalado: calc.totalKgEmbalado,
+    custoKgEmbalado: calc.custoKgEmbalado,
+    sobra: calc.sobra,
+    perda: calc.perda,
+    custoTotalCafe: calc.custoTotalCafe,
+    custoTotalEmbalagens: calc.custoTotalEmbalagens,
+    custoTotal: calc.custoTotalGeral,
     lotes: lotesUsados,
-    embalagemId: calc.embalagemId,
+    itens: itensOrdem,
     movTorradoId,
-    movInsumoId,
-    paEstoqueId,
-    paMovId,
   }
   salvarOrdens([...ordens, ordem])
   return ordem
 }
 
-// Estorna uma ordem: devolve o cru aos lotes, remove sobra torrada, devolve embalagens
-// e remove os registros de PA/ordem.
+// Estorna uma ordem: devolve cru aos lotes, remove sobra, devolve embalagens e apaga PA.
 export function estornarOrdem(ordemId) {
   const ordens = carregarOrdens()
   const ordem = ordens.find((o) => o.id === Number(ordemId))
@@ -364,12 +402,20 @@ export function estornarOrdem(ordemId) {
   // (b) remove a sobra torrada
   if (ordem.movTorradoId != null) removerMovimentacaoTorrado(ordem.movTorradoId)
 
-  // (c) devolve embalagens (remove a saída de insumo)
-  if (ordem.movInsumoId != null) removerMovimentacaoInsumo(ordem.movInsumoId)
-
-  // (d) remove estoque de PA e movimentação
-  salvarPAEstoque(carregarPAEstoque().filter((r) => r.id !== Number(ordem.paEstoqueId)))
-  salvarPAMovimentacoes(carregarPAMovimentacoes().filter((r) => r.id !== Number(ordem.paMovId)))
+  // (c/d) por item: devolve embalagem + remove registros de PA
+  // Compatível com ordens antigas (formato de gramatura única).
+  const itens = ordem.itens || [
+    { movInsumoId: ordem.movInsumoId, paEstoqueId: ordem.paEstoqueId, paMovId: ordem.paMovId },
+  ]
+  const estoqueIds = new Set()
+  const movIds = new Set()
+  for (const it of itens) {
+    if (it.movInsumoId != null) removerMovimentacaoInsumo(it.movInsumoId)
+    if (it.paEstoqueId != null) estoqueIds.add(Number(it.paEstoqueId))
+    if (it.paMovId != null) movIds.add(Number(it.paMovId))
+  }
+  salvarPAEstoque(carregarPAEstoque().filter((r) => !estoqueIds.has(Number(r.id))))
+  salvarPAMovimentacoes(carregarPAMovimentacoes().filter((r) => !movIds.has(Number(r.id))))
 
   // (e) remove a ordem
   salvarOrdens(ordens.filter((o) => o.id !== Number(ordem.id)))

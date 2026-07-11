@@ -28,30 +28,34 @@ export default function OrdemProducao() {
 
   const [data, setData] = useState(hojeISO())
   const [paId, setPaId] = useState('')
-  const [gramatura, setGramatura] = useState('')
-  const [quantidade, setQuantidade] = useState('')
+  const [quantidades, setQuantidades] = useState({}) // { [gramatura]: qtd }
   const [linhasLote, setLinhasLote] = useState([{ loteId: '', kg: '' }])
   const [sobra, setSobra] = useState('')
   const [erros, setErros] = useState({})
 
   const pa = pas.find((p) => p.id === Number(paId)) || null
-
   const insumos = useMemo(() => carregarInsumos(), [])
   const resumoInsumos = useMemo(() => resumoPorInsumo(), [])
 
-  // Embalagem disponível para a gramatura escolhida (etapa 1)
-  const embInfo = useMemo(() => {
-    if (!pa || !gramatura) return null
-    const id = embalagemDoPA(pa, Number(gramatura))
-    if (!id) return { semVinculo: true }
-    const ins = insumos.find((i) => i.id === id)
-    return { nome: ins?.nome || 'Embalagem', saldo: Number(resumoInsumos[id]?.saldoAtual) || 0 }
-  }, [pa, gramatura, insumos, resumoInsumos])
+  const itensInput = useMemo(
+    () => (pa?.gramaturas || []).map((g) => ({ gramatura: g, quantidade: Number(quantidades[g]) || 0 })),
+    [pa, quantidades],
+  )
 
   const calc = useMemo(
-    () => calcularOrdem({ paId, gramatura, quantidade, lotes: linhasLote, sobra }),
-    [paId, gramatura, quantidade, linhasLote, sobra],
+    () => calcularOrdem({ paId, itens: itensInput, lotes: linhasLote, sobra }),
+    [paId, itensInput, linhasLote, sobra],
   )
+
+  function embSaldo(gramatura) {
+    const id = embalagemDoPA(pa, gramatura)
+    if (!id) return null
+    return { nome: insumos.find((i) => i.id === id)?.nome || 'Embalagem', saldo: Number(resumoInsumos[id]?.saldoAtual) || 0 }
+  }
+
+  function setQtd(g, valor) {
+    setQuantidades((q) => ({ ...q, [g]: valor }))
+  }
 
   function atualizarLinha(i, campo, valor) {
     setLinhasLote((linhas) => linhas.map((l, idx) => (idx === i ? { ...l, [campo]: valor } : l)))
@@ -66,9 +70,8 @@ export default function OrdemProducao() {
   function validar() {
     const e = {}
     if (!paId) e.paId = 'Selecione o produto.'
-    if (!gramatura) e.gramatura = 'Selecione a gramatura.'
-    const q = Number(quantidade)
-    if (!quantidade || Number.isNaN(q) || q <= 0) e.quantidade = 'Informe a quantidade de pacotes.'
+    const algumaQtd = itensInput.some((it) => it.quantidade > 0)
+    if (!algumaQtd) e.itens = 'Informe a quantidade de pelo menos uma gramatura.'
 
     const linhasValidas = linhasLote.filter(
       (l) => l.loteId && (Number(String(l.kg).replace(',', '.')) || 0) > 0,
@@ -98,26 +101,17 @@ export default function OrdemProducao() {
   function confirmar() {
     if (!validar()) return
 
-    const ordem = registrarOrdem({
-      data,
-      paId,
-      gramatura,
-      quantidade,
-      lotes: linhasLote,
-      sobra,
-    })
+    const ordem = registrarOrdem({ data, paId, itens: itensInput, lotes: linhasLote, sobra })
 
     registrarLog(
       nomeUsuarioAtual(),
       'Estoque PA',
       ACOES.INCLUIU,
-      `Produção: ${ordem.paNome} ${formatarGramatura(ordem.gramatura)} × ${ordem.quantidade} pacotes (${formatarMoeda(ordem.custoTotal)})`,
+      `Produção: ${ordem.paNome} — ${ordem.itens.map((it) => `${it.quantidade}×${formatarGramatura(it.gramatura)}`).join(', ')} (${formatarMoeda(ordem.custoTotal)})`,
     )
 
-    // reset
     setPaId('')
-    setGramatura('')
-    setQuantidade('')
+    setQuantidades({})
     setLinhasLote([{ loteId: '', kg: '' }])
     setSobra('')
     setErros({})
@@ -125,7 +119,7 @@ export default function OrdemProducao() {
     navigate('/estoque/pa/historico')
   }
 
-  const podeConfirmar = paId && gramatura && Number(quantidade) > 0 && calc.totalCru > 0
+  const podeConfirmar = paId && itensInput.some((it) => it.quantidade > 0) && calc.totalCru > 0
 
   return (
     <div className="pagina">
@@ -162,7 +156,7 @@ export default function OrdemProducao() {
                 value={paId}
                 onChange={(e) => {
                   setPaId(e.target.value)
-                  setGramatura('')
+                  setQuantidades({})
                 }}
               >
                 <option value="">Selecione...</option>
@@ -174,60 +168,43 @@ export default function OrdemProducao() {
               </select>
               {erros.paId && <span className="campo-erro">{erros.paId}</span>}
             </label>
-            <label className="campo">
-              <span className="campo-label">
-                Gramatura <span className="obrig">*</span>
-              </span>
-              <select
-                value={gramatura}
-                onChange={(e) => setGramatura(e.target.value)}
-                disabled={!pa}
-              >
-                <option value="">Selecione...</option>
-                {(pa?.gramaturas || []).map((g) => (
-                  <option key={g} value={g}>
-                    {formatarGramatura(g)}
-                  </option>
-                ))}
-              </select>
-              {erros.gramatura && <span className="campo-erro">{erros.gramatura}</span>}
-            </label>
-            <label className="campo">
-              <span className="campo-label">
-                Pacotes produzidos <span className="obrig">*</span>
-              </span>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={quantidade}
-                onChange={(e) => setQuantidade(e.target.value)}
-                placeholder="0"
-              />
-              {erros.quantidade && <span className="campo-erro">{erros.quantidade}</span>}
-            </label>
           </div>
+
+          {pa && (
+            <div className="pa-gram-grid">
+              {pa.gramaturas.map((g) => {
+                const emb = embSaldo(g)
+                const qtd = Number(quantidades[g]) || 0
+                return (
+                  <div className="pa-gram-card" key={g}>
+                    <span className="pa-gram-nome">{formatarGramatura(g)}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={quantidades[g] ?? ''}
+                      onChange={(e) => setQtd(g, e.target.value)}
+                      placeholder="0 pacotes"
+                    />
+                    {emb ? (
+                      <span className={`pa-disp ${qtd > 0 && emb.saldo < qtd ? 'baixo' : 'ok'}`}>
+                        Embalagem: {emb.saldo} un
+                      </span>
+                    ) : (
+                      <span className="pa-disp">sem embalagem vinculada</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {erros.itens && <span className="campo-erro">{erros.itens}</span>}
+
           <div className="pa-calc" style={{ marginTop: 14 }}>
             <div className="pa-calc-item">
               <span className="pa-calc-label">Total embalado</span>
-              <strong className="pa-calc-valor dourado">{kg3(calc.embaladoKg)}</strong>
+              <strong className="pa-calc-valor dourado">{kg3(calc.totalKgEmbalado)}</strong>
             </div>
-            {embInfo && (
-              <div className="pa-calc-item">
-                <span className="pa-calc-label">Embalagem disponível</span>
-                {embInfo.semVinculo ? (
-                  <strong className="pa-calc-valor">sem embalagem vinculada</strong>
-                ) : (
-                  <strong
-                    className={`pa-calc-valor ${
-                      Number(quantidade) > 0 && embInfo.saldo < Number(quantidade) ? 'danger' : ''
-                    }`}
-                  >
-                    {embInfo.saldo} unidades
-                  </strong>
-                )}
-              </div>
-            )}
           </div>
         </section>
 
@@ -247,13 +224,16 @@ export default function OrdemProducao() {
                     <option value="">Selecione um lote...</option>
                     {lotesCru.map((l) => (
                       <option key={l.id} value={l.id}>
-                        {l.codigo} — {l.produtor} ({formatarKg(l.saldoDisponivel)})
+                        {l.codigo} — {l.produtor}
+                        {l.variedade ? ` / ${l.variedade}` : ''} ({formatarKg(l.saldoDisponivel)})
                       </option>
                     ))}
                   </select>
                   {loteLinha && (
                     <span className={`pa-disp ${saldoLinha < 1 ? 'baixo' : 'ok'}`}>
-                      Disponível: {formatarKg(saldoLinha)}
+                      {loteLinha.produtor}
+                      {loteLinha.variedade ? ` · ${loteLinha.variedade}` : ''} — Disponível:{' '}
+                      {formatarKg(saldoLinha)}
                     </span>
                   )}
                 </label>
@@ -291,7 +271,7 @@ export default function OrdemProducao() {
             </div>
             <div className="pa-calc-item">
               <span className="pa-calc-label">Custo do café cru</span>
-              <strong className="pa-calc-valor">{formatarMoeda(calc.custoCruTotal)}</strong>
+              <strong className="pa-calc-valor">{formatarMoeda(calc.custoTotalCru)}</strong>
             </div>
           </div>
         </section>
@@ -322,7 +302,7 @@ export default function OrdemProducao() {
             </div>
             <div className="pa-calc-item">
               <span className="pa-calc-label">Embalado</span>
-              <strong className="pa-calc-valor">{formatarKg(calc.embaladoKg)}</strong>
+              <strong className="pa-calc-valor">{formatarKg(calc.totalKgEmbalado)}</strong>
             </div>
             <div className="pa-calc-item">
               <span className="pa-calc-label">Sobra torrada</span>
@@ -346,51 +326,73 @@ export default function OrdemProducao() {
           <div className="pa-resumo">
             <div className="pa-resumo-linha">
               <span className="pa-resumo-rot">Produto</span>
-              <span className="pa-resumo-val">
-                {pa ? `${pa.nome} ${formatarGramatura(calc.gramatura)} × ${calc.quantidade} pacotes` : '—'}
-              </span>
+              <span className="pa-resumo-val">{pa ? pa.nome : '—'}</span>
             </div>
-
             <div className="pa-resumo-linha">
-              <span className="pa-resumo-rot">Café cru consumido</span>
-              <span className="pa-resumo-val">
-                {calc.lotes.length === 0 ? (
-                  '—'
-                ) : (
-                  <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, alignItems: 'flex-end' }}>
-                    {calc.lotes.map((l) => (
-                      <span key={l.loteId} className="pa-lote-item">
-                        {l.loteCodigo}: {formatarKg(l.kg)} × {formatarMoeda(l.custoPorKg)} ={' '}
-                        {formatarMoeda(l.custoTotalLote)}
-                      </span>
-                    ))}
+              <span className="pa-resumo-rot">Custo total café (MP)</span>
+              <span className="pa-resumo-val">{formatarMoeda(calc.custoTotalCru)}</span>
+            </div>
+            <div className="pa-resumo-linha">
+              <span className="pa-resumo-rot">Custo / kg embalado</span>
+              <span className="pa-resumo-val">{formatarMoeda(calc.custoKgEmbalado)}</span>
+            </div>
+          </div>
+
+          {/* Detalhamento por gramatura */}
+          <div className="pa-gram-detalhes">
+            {calc.itens.map((it) => (
+              <div className="pa-gram-box" key={it.gramatura}>
+                <div className="pa-gram-box-titulo">
+                  Pacotes {formatarGramatura(it.gramatura)} ({it.quantidade} un)
+                </div>
+                <div className="pa-gram-linha">
+                  <span>Café</span>
+                  <span>
+                    {formatarMoeda(it.custoUnitarioCafe)}/un → {formatarMoeda(it.custoUnitarioCafe * it.quantidade)}
                   </span>
-                )}
-              </span>
-            </div>
+                </div>
+                <div className="pa-gram-linha">
+                  <span>Embalagem</span>
+                  <span>
+                    {formatarMoeda(it.custoUnitarioEmbalagem)}/un →{' '}
+                    {formatarMoeda(it.custoUnitarioEmbalagem * it.quantidade)}
+                  </span>
+                </div>
+                <div className="pa-gram-linha total">
+                  <span>TOTAL</span>
+                  <span>
+                    {formatarMoeda(it.custoUnitarioTotal)}/un → {formatarMoeda(it.custoTotalGramatura)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
 
+          <div className="pa-resumo" style={{ marginTop: 8 }}>
             <div className="pa-resumo-linha">
-              <span className="pa-resumo-rot">Custo da matéria prima (café)</span>
-              <span className="pa-resumo-val">{formatarMoeda(calc.custoMateriaPrima)}</span>
-            </div>
-            <div className="pa-resumo-linha">
-              <span className="pa-resumo-rot">
-                Embalagens baixadas{' '}
-                {calc.embalagemId ? `(${calc.quantidade} un)` : '(sem embalagem vinculada)'}
+              <span className="pa-resumo-rot">Embalagens baixadas</span>
+              <span className="pa-resumo-val">
+                {calc.itens.filter((it) => it.embalagemId).length === 0
+                  ? '—'
+                  : calc.itens
+                      .filter((it) => it.embalagemId)
+                      .map((it) => `${it.quantidade} un ${it.embNome}`)
+                      .join(' + ')}
               </span>
-              <span className="pa-resumo-val">{formatarMoeda(calc.custoEmbalagens)}</span>
             </div>
             <div className="pa-resumo-linha">
-              <span className="pa-resumo-rot">Sobra torrada (vai ao estoque de torrado)</span>
-              <span className="pa-resumo-val">{formatarKg(calc.sobra)}</span>
+              <span className="pa-resumo-rot">Sobra torrada (custo zero)</span>
+              <span className="pa-resumo-val">
+                {formatarKg(calc.sobra)} → {formatarMoeda(0)}
+              </span>
             </div>
             <div className="pa-resumo-linha">
-              <span className="pa-resumo-rot">Perda</span>
+              <span className="pa-resumo-rot">Perda (informação)</span>
               <span className="pa-resumo-val">{formatarKg(calc.perda)}</span>
             </div>
             <div className="pa-resumo-linha pa-resumo-total">
-              <span className="pa-resumo-rot">Custo por pacote</span>
-              <span className="pa-resumo-val">{formatarMoeda(calc.custoUnitario)}</span>
+              <span className="pa-resumo-rot">Custo total da produção</span>
+              <span className="pa-resumo-val">{formatarMoeda(calc.custoTotalGeral)}</span>
             </div>
           </div>
 

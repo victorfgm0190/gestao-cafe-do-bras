@@ -217,6 +217,8 @@ export function registrarTorra(input) {
     tipo: TIPOS_MOV.SAIDA,
     data,
     descricao: `Torra ${formatarData(data)} — ${lote.codigo || 'lote'}`,
+    produtor: lote.produtor,
+    variedade: lote.variedade,
     quantidade: pesoCru,
     custoUnitario: custoLote,
   })

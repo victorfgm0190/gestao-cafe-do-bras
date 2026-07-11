@@ -61,10 +61,31 @@ export default function KardexCafeCru() {
   const [dataInicial, setDataInicial] = useState('')
   const [dataFinal, setDataFinal] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('todos')
+  const [filtroGrupo, setFiltroGrupo] = useState('todos')
 
   const [modalAberto, setModalAberto] = useState(false)
   const [form, setForm] = useState(MOV_VAZIA)
   const [erros, setErros] = useState({})
+
+  // Grupos (fazenda + variedade) presentes nas movimentações
+  const grupos = useMemo(() => {
+    const mapa = new Map()
+    for (const m of movs) {
+      const chave = m.grupo || `${m.produtor || ''}|${m.variedade || ''}`
+      if (!mapa.has(chave)) {
+        const rot = [m.produtor, m.variedade].filter(Boolean).join(' · ') || '—'
+        mapa.set(chave, rot)
+      }
+    }
+    return [...mapa.entries()].map(([chave, rotulo]) => ({ chave, rotulo }))
+  }, [movs])
+
+  function grupoDe(m) {
+    return m.grupo || `${m.produtor || ''}|${m.variedade || ''}`
+  }
+  function rotuloGrupo(m) {
+    return [m.produtor, m.variedade].filter(Boolean).join(' · ') || '—'
+  }
 
   const filtradas = useMemo(() => {
     return movs
@@ -72,13 +93,14 @@ export default function KardexCafeCru() {
         if (dataInicial && m.data < dataInicial) return false
         if (dataFinal && m.data > dataFinal) return false
         if (filtroTipo !== 'todos' && m.tipo !== filtroTipo) return false
+        if (filtroGrupo !== 'todos' && grupoDe(m) !== filtroGrupo) return false
         return true
       })
       .sort(
         (a, b) =>
           (a.data || '').localeCompare(b.data || '') || (a.id || 0) - (b.id || 0),
       )
-  }, [movs, dataInicial, dataFinal, filtroTipo])
+  }, [movs, dataInicial, dataFinal, filtroTipo, filtroGrupo])
 
   // Totalizadores: entradas/saídas do período filtrado; saldo e custo médio são os atuais.
   const totais = useMemo(() => {
@@ -101,11 +123,13 @@ export default function KardexCafeCru() {
     setDataInicial('')
     setDataFinal('')
     setFiltroTipo('todos')
+    setFiltroGrupo('todos')
   }
 
   function exportarCSV() {
     const cabecalho = [
       'Data',
+      'Grupo (fazenda + variedade)',
       'Tipo',
       'Descrição',
       'Quantidade (kg)',
@@ -116,6 +140,7 @@ export default function KardexCafeCru() {
     ]
     const linhas = filtradas.map((m) => [
       formatarData(m.data),
+      rotuloGrupo(m),
       m.tipo,
       m.descricao,
       numeroBR(m.quantidade),
@@ -248,6 +273,17 @@ export default function KardexCafeCru() {
               ))}
             </select>
           </div>
+          <div className="kx-filtro">
+            <span className="kx-filtro-label">Fazenda + variedade</span>
+            <select value={filtroGrupo} onChange={(e) => setFiltroGrupo(e.target.value)}>
+              <option value="todos">Todos</option>
+              {grupos.map((g) => (
+                <option key={g.chave} value={g.chave}>
+                  {g.rotulo}
+                </option>
+              ))}
+            </select>
+          </div>
           <button className="kx-limpar" onClick={limparFiltros}>
             Limpar filtros
           </button>
@@ -259,6 +295,7 @@ export default function KardexCafeCru() {
             <thead>
               <tr>
                 <th>Data</th>
+                <th>Fazenda + variedade</th>
                 <th>Tipo</th>
                 <th>Descrição</th>
                 <th className="kx-num">Quantidade</th>
@@ -271,7 +308,7 @@ export default function KardexCafeCru() {
             <tbody>
               {filtradas.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="kx-vazio">
+                  <td colSpan={9} className="kx-vazio">
                     Nenhuma movimentação encontrada com os filtros atuais.
                   </td>
                 </tr>
@@ -279,6 +316,7 @@ export default function KardexCafeCru() {
               {filtradas.map((m) => (
                 <tr key={m.id}>
                   <td>{formatarData(m.data)}</td>
+                  <td>{rotuloGrupo(m)}</td>
                   <td>
                     <span className={classeBadge(m.tipo)}>{m.tipo}</span>
                   </td>
