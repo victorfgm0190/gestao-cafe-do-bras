@@ -1,0 +1,162 @@
+/* Inventário — reaproveita tabelas (kx-*) e abas de CafeCru.css. */
+
+.inv-secao {
+  margin-bottom: 26px;
+}
+
+.inv-secao-tit {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--verde);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inv-input {
+  width: 120px;
+  border: 1px solid var(--creme-escuro);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 14px;
+  text-align: right;
+  font-weight: 600;
+  background: var(--branco);
+}
+
+.inv-input:focus {
+  outline: none;
+  border-color: var(--dourado);
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.2);
+}
+
+/* Diferença */
+.inv-dif {
+  font-weight: 800;
+}
+.inv-dif.pos {
+  color: var(--success);
+}
+.inv-dif.neg {
+  color: var(--danger);
+}
+.inv-dif.zero {
+  color: var(--texto-muted);
+}
+
+/* Resumo etapa 2 */
+.inv-resumo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.inv-resumo-card {
+  background: var(--branco);
+  border: var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inv-resumo-card.ok {
+  border-left: 4px solid var(--success);
+}
+.inv-resumo-card.dif {
+  border-left: 4px solid var(--warning);
+}
+
+.inv-resumo-valor {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--verde);
+}
+
+.inv-resumo-label {
+  font-size: 13px;
+  color: var(--texto-muted);
+  font-weight: 600;
+}
+
+.inv-resumo-sub {
+  font-size: 12.5px;
+  color: var(--texto-muted);
+}
+
+/* Cards de regularização */
+.inv-reg-card {
+  background: var(--branco);
+  border: var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.inv-reg-card.falta {
+  border-left: 4px solid var(--danger);
+}
+.inv-reg-card.sobra {
+  border-left: 4px solid var(--success);
+}
+.inv-reg-card.feito {
+  border-left: 4px solid var(--texto-muted);
+  opacity: 0.75;
+}
+
+.inv-reg-info {
+  flex: 1;
+  min-width: 220px;
+}
+
+.inv-reg-titulo {
+  font-weight: 800;
+  color: var(--verde);
+  font-size: 15px;
+}
+
+.inv-reg-desc {
+  font-size: 13px;
+  color: var(--texto-muted);
+  margin-top: 3px;
+}
+
+.inv-reg-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inv-reg-form select,
+.inv-reg-form input {
+  border: 1px solid var(--creme-escuro);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  font-size: 13.5px;
+  background: var(--branco);
+}
+
+.inv-reg-feito {
+  color: var(--success);
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.inv-acoes-rodape {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}

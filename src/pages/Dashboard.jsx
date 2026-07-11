@@ -26,6 +26,14 @@ const MODULOS = [
     disponivel: true,
   },
   {
+    chave: 'inventario',
+    nome: 'Inventário',
+    descricao: 'Contagem física, diferenças e regularização.',
+    icone: '📋',
+    rota: '/inventario',
+    disponivel: true,
+  },
+  {
     chave: 'torrefacao',
     nome: 'Torrefação',
     descricao: 'Perfis de torra, lotes e curvas.',

@@ -20,6 +20,9 @@ import OrdemProducao from './pages/estoque/pa/OrdemProducao'
 import PAEstoque from './pages/estoque/pa/PAEstoque'
 import HistoricoProducao from './pages/estoque/pa/HistoricoProducao'
 import EstoqueMinimo from './pages/configuracoes/EstoqueMinimo'
+import InventarioIndex from './pages/inventario/InventarioIndex'
+import InventarioForm from './pages/inventario/InventarioForm'
+import InventarioDetalhe from './pages/inventario/InventarioDetalhe'
 import AlertaEstoque from './components/AlertaEstoque'
 import Usuarios from './pages/usuarios/Usuarios'
 import Auditoria from './pages/auditoria/Auditoria'
@@ -193,6 +196,30 @@ export default function App() {
         element={
           <RotaProtegida>
             <EstoqueMinimo />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/inventario"
+        element={
+          <RotaProtegida>
+            <InventarioIndex />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/inventario/novo"
+        element={
+          <RotaProtegida>
+            <InventarioForm />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/inventario/:id"
+        element={
+          <RotaProtegida>
+            <InventarioDetalhe />
           </RotaProtegida>
         }
       />

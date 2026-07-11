@@ -521,6 +521,49 @@ export function recalcularOrdemProducao(ordemId) {
   }
 }
 
+// Ajuste avulso de estoque de PA (usado pelo inventário: sobra ou saída não identificada).
+// quantidade positiva = entrada/sobra; negativa = saída/falta.
+export function ajustarEstoquePA({ paId, gramatura, quantidade, descricao, data }) {
+  const q = Number(quantidade) || 0
+  const resumo = resumoPAEstoque().find(
+    (r) => r.paId === Number(paId) && Number(r.gramatura) === Number(gramatura),
+  )
+  const custoUnit = resumo ? Number(resumo.custoMedio) || 0 : 0
+  const paEstoque = carregarPAEstoque()
+  const paMov = carregarPAMovimentacoes()
+  const estId = paEstoque.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1
+  const movId = paMov.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1
+
+  const registro = {
+    id: estId,
+    paId: Number(paId),
+    gramatura: Number(gramatura),
+    quantidade: q,
+    custoUnitario: custoUnit,
+    custoTotal: q * custoUnit,
+    data: data || hojeISO(),
+    ordemId: null,
+    origem: 'inventario',
+  }
+  salvarPAEstoque([...paEstoque, registro])
+  salvarPAMovimentacoes([
+    ...paMov,
+    {
+      id: movId,
+      ordemId: null,
+      data: data || hojeISO(),
+      tipo: q < 0 ? TIPOS_MOV.SAIDA : TIPOS_MOV.AJUSTE,
+      paId: Number(paId),
+      gramatura: Number(gramatura),
+      quantidade: q,
+      custoUnitario: custoUnit,
+      custoTotal: q * custoUnit,
+      descricao: descricao || 'Ajuste de inventário',
+    },
+  ])
+  return registro
+}
+
 // Estoque de PA agregado por produto + gramatura (custo médio ponderado).
 export function resumoPAEstoque() {
   const registros = carregarPAEstoque()
