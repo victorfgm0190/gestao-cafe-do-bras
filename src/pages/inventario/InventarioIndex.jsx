@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Topbar from '../../components/Topbar'
 import { formatarData } from '../../utils/formato'
@@ -15,8 +15,19 @@ import './Inventario.css'
 
 export default function InventarioIndex() {
   const navigate = useNavigate()
-  const [inventarios, setInventarios] = useState(carregarInventarios)
+  const [inventarios, setInventarios] = useState([])
   const [modalTipo, setModalTipo] = useState(false)
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const lista = await carregarInventarios()
+      if (vivo) setInventarios(lista)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   const ordenados = useMemo(
     () => [...inventarios].sort((a, b) => (b.data || '').localeCompare(a.data || '') || b.id - a.id),
@@ -29,11 +40,11 @@ export default function InventarioIndex() {
     navigate('/inventario/novo', { state: { tipo } })
   }
 
-  function excluir(inv) {
+  async function excluir(inv) {
     if (window.confirm('Excluir este inventário? Esta ação não pode ser desfeita.')) {
-      excluirInventario(inv.id)
+      await excluirInventario(inv.id)
       registrarLog(nomeUsuarioAtual(), 'Inventário', ACOES.EXCLUIU, `Excluiu inventário ${formatarData(inv.data)} (${inv.tipo})`)
-      setInventarios(carregarInventarios())
+      setInventarios(await carregarInventarios())
     }
   }
 

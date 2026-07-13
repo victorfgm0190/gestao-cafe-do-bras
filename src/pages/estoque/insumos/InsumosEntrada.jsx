@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../../components/Topbar'
 import AbasInsumos from './AbasInsumos'
@@ -24,10 +24,32 @@ const FORM_VAZIO = {
 }
 
 export default function InsumosEntrada() {
-  const insumos = useMemo(() => carregarCadastro(), [])
-  const [entradas, setEntradas] = useState(carregarEntradas)
+  const [insumos, setInsumos] = useState([])
+  const [entradas, setEntradas] = useState([])
   const [form, setForm] = useState(FORM_VAZIO)
   const [erros, setErros] = useState({})
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const r = await carregarCadastro()
+      if (vivo) setInsumos(r)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const r = await carregarEntradas()
+      if (vivo) setEntradas(r)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   const insumoSel = insumos.find((i) => i.id === Number(form.insumoId)) || null
 
@@ -53,11 +75,11 @@ export default function InsumosEntrada() {
     return Object.keys(e).length === 0
   }
 
-  function salvar(e) {
+  async function salvar(e) {
     e.preventDefault()
     if (!validar()) return
 
-    registrarEntradaInsumo({
+    await registrarEntradaInsumo({
       insumoId: form.insumoId,
       data: form.data,
       quantidade: form.quantidade,
@@ -73,7 +95,7 @@ export default function InsumosEntrada() {
       `Entrada de ${formatarQuantidade(form.quantidade, insumoSel?.unidade)} de ${insumoSel?.nome} (${formatarMoeda(custoTotal)})`,
     )
 
-    setEntradas(carregarEntradas())
+    setEntradas(await carregarEntradas())
     setForm({ ...FORM_VAZIO, data: form.data })
     setErros({})
   }

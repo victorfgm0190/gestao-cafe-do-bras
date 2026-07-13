@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Topbar from '../components/Topbar'
 import { getUsuario } from '../utils/auth'
@@ -104,14 +104,37 @@ export default function Dashboard() {
       vivo = false
     }
   }, [])
-  const torrado = useMemo(() => carregarEstoqueTorrado(), [])
-  const embalados = useMemo(
-    () =>
-      resumoPAEstoque()
-        .filter((r) => r.quantidade > 0)
-        .sort((a, b) => (a.paNome || '').localeCompare(b.paNome || '') || a.gramatura - b.gramatura),
-    [],
-  )
+  const [torrado, setTorrado] = useState({ saldoAtual: 0, custoMedio: 0 })
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const r = await carregarEstoqueTorrado()
+      if (vivo) setTorrado(r)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
+  const [embalados, setEmbalados] = useState([])
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const r = await resumoPAEstoque()
+      if (vivo) {
+        setEmbalados(
+          r
+            .filter((x) => x.quantidade > 0)
+            .sort(
+              (a, b) =>
+                (a.paNome || '').localeCompare(b.paNome || '') || a.gramatura - b.gramatura,
+            ),
+        )
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   function abrir(modulo) {
     if (modulo.disponivel && modulo.rota) {

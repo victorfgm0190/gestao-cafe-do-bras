@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import Topbar from '../../components/Topbar'
 import { formatarData, hojeISO } from '../../utils/formato'
@@ -18,7 +18,25 @@ function numeroBR(n) {
 export default function InventarioDetalhe() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const inv = useMemo(() => carregarInventario(id), [id])
+  const [inv, setInv] = useState(null)
+  const [carregando, setCarregando] = useState(true)
+
+  useEffect(() => {
+    let vivo = true
+    setCarregando(true)
+    ;(async () => {
+      const carregado = await carregarInventario(id)
+      if (vivo) {
+        setInv(carregado)
+        setCarregando(false)
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [id])
+
+  if (carregando) return null
 
   if (!inv) {
     return (

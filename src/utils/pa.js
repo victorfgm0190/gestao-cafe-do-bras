@@ -1,48 +1,13 @@
-// Produtos Acabados (PA) + Ordem de Produção.
-//
-// Custeio (correções):
-//  - Todo o custo do café cru vai para os pacotes EMBALADOS.
-//  - custoKgEmbalado = custoTotalCru / totalKgEmbalado
-//  - A sobra de torrado entra no estoque de torrado com custo ZERO (só quantidade).
-//  - Custo por pacote = (custoKgEmbalado × gramatura_kg) + custo médio da embalagem da gramatura.
-//  - Uma ordem pode produzir várias gramaturas de uma vez.
-//
-// localStorage:
-//   pa_cadastro       → [{ id, nome, gramaturas:[g], embalagem250Id, embalagem1000Id, ativo }]
-//   pa_estoque        → [{ id, paId, gramatura, quantidade, custoUnitario, custoTotal, data, ordemId }]
-//   pa_movimentacoes  → histórico de movimentações de PA (entrada por produção)
-//   ordens_producao   → histórico completo das ordens (itens por gramatura + refs p/ estorno)
+// Produtos Acabados (PA) + Ordem de Produção — cliente async da API (api/pa).
+// Toda a orquestração da ordem (baixa café cru + insumos, sobra no torrado,
+// estoque de PA) e o recálculo em cascata acontecem no backend.
 
-import { hojeISO } from './formato'
-import {
-  TIPOS_MOV,
-  registrarMovimentacao as registrarMovCru,
-  removerMovimentacao as removerMovCru,
-  carregarKardex as carregarKardexCru,
-  chaveGrupo,
-  custoMedioGrupo,
-} from './kardex'
-import {
-  carregarLotesCru,
-  loteCruPorId,
-  lotesCruDisponiveis,
-  atualizarSaldoLote,
-} from './lotesCru'
-import { registrarMovimentacaoTorrado, removerMovimentacaoTorrado } from './torrado'
-import {
-  carregarCadastro as carregarInsumos,
-  registrarMovimentacaoInsumo,
-  removerMovimentacaoInsumo,
-  resumoPorInsumo,
-} from './insumos'
+import { getJson, sendJson } from './api'
+import { chaveGrupo } from './kardex'
+import { loteCruPorId, lotesCruDisponiveis } from './lotesCru'
 
 // Re-exporta para as telas que importam de pa.js (OrdemProducao, Dashboard).
 export { lotesCruDisponiveis, loteCruPorId }
-
-const CHAVE_PA = 'pa_cadastro'
-const CHAVE_PA_ESTOQUE = 'pa_estoque'
-const CHAVE_PA_MOV = 'pa_movimentacoes'
-const CHAVE_ORDENS = 'ordens_producao'
 
 export const GRAMATURAS = [200, 250, 1000]
 
@@ -51,526 +16,101 @@ export function formatarGramatura(g) {
   return n === 1000 ? '1kg' : `${n}g`
 }
 
-// ---------- Cadastro de PA ----------
-function seedPA() {
-  const insumos = carregarInsumos()
-  const emb250 = insumos.find((i) => i.nome === 'Embalagem 250g')
-  const emb1000 = insumos.find((i) => i.nome === 'Embalagem 1kg')
-  const nomes = ['Chocolatudo', 'Frutado e Floral', 'Garapa com Limão', 'Monstro do Lago Ness', 'Pyta']
-  return nomes.map((nome, i) => ({
-    id: i + 1,
-    nome,
-    gramaturas: [250, 1000],
-    embalagem250Id: emb250?.id ?? null,
-    embalagem1000Id: emb1000?.id ?? null,
-    ativo: true,
-  }))
-}
-
-export function carregarPA() {
-  try {
-    const bruto = localStorage.getItem(CHAVE_PA)
-    if (!bruto) {
-      const seed = seedPA()
-      localStorage.setItem(CHAVE_PA, JSON.stringify(seed))
-      return seed
-    }
-    const dado = JSON.parse(bruto)
-    return Array.isArray(dado) ? dado : []
-  } catch {
-    return []
+const num = (v) => Number(v) || 0
+const mapPA = (r) =>
+  r && {
+    id: r.id,
+    nome: r.nome || '',
+    gramaturas: Array.isArray(r.gramaturas) ? r.gramaturas.map(Number) : [],
+    embalagem250Id: r.embalagem_250_id ?? null,
+    embalagem1000Id: r.embalagem_1000_id ?? null,
+    ativo: r.ativo,
   }
+const mapOrdem = (o) =>
+  o && {
+    id: o.id,
+    data: typeof o.data === 'string' ? o.data.slice(0, 10) : o.data,
+    paId: o.pa_id,
+    paNome: o.pa_nome || '',
+    totalCru: num(o.total_cru),
+    custoTotalCru: num(o.custo_total_cru),
+    totalKgEmbalado: num(o.total_kg_embalado),
+    custoKgEmbalado: num(o.custo_kg_embalado),
+    sobra: num(o.sobra),
+    perda: num(o.perda),
+    custoTotalCafe: num(o.custo_total_cafe),
+    custoTotalEmbalagens: num(o.custo_total_embalagens),
+    custoTotal: num(o.custo_total),
+    movTorradoId: o.mov_torrado_id ?? null,
+    lotes: Array.isArray(o.lotes) ? o.lotes : [],
+    itens: Array.isArray(o.itens) ? o.itens : [],
+  }
+
+// Embalagem vinculada a uma gramatura do PA (objeto já mapeado em camelCase).
+export function embalagemDoPA(pa, gramatura) {
+  if (Number(gramatura) === 250) return pa?.embalagem250Id ?? null
+  if (Number(gramatura) === 1000) return pa?.embalagem1000Id ?? null
+  return null
 }
 
-export function salvarPA(lista) {
-  localStorage.setItem(CHAVE_PA, JSON.stringify(lista))
+// ---------- Cadastro de PA ----------
+export async function carregarPA() {
+  const d = await getJson('/api/pa/cadastro')
+  return (d.produtos || []).map(mapPA)
 }
-
-export function proximoIdPA(lista) {
-  return lista.reduce((max, p) => Math.max(max, p.id || 0), 0) + 1
+export async function criarPA(dados) {
+  const d = await sendJson('/api/pa/cadastro', 'POST', dados)
+  return mapPA(d.produto)
 }
-
-export function embalagensPadrao() {
-  const insumos = carregarInsumos()
+export async function editarPA(id, dados) {
+  const d = await sendJson(`/api/pa/cadastro/${id}`, 'PUT', dados)
+  return mapPA(d.produto)
+}
+export async function excluirPA(id) {
+  await sendJson(`/api/pa/cadastro/${id}`, 'DELETE')
+}
+export async function embalagensPadrao() {
+  const d = await getJson('/api/insumos/cadastro')
+  const insumos = d.insumos || []
   return {
     embalagem250Id: insumos.find((i) => i.nome === 'Embalagem 250g')?.id ?? null,
     embalagem1000Id: insumos.find((i) => i.nome === 'Embalagem 1kg')?.id ?? null,
   }
 }
 
-export function embalagemDoPA(pa, gramatura) {
-  if (Number(gramatura) === 250) return pa?.embalagem250Id ?? null
-  if (Number(gramatura) === 1000) return pa?.embalagem1000Id ?? null
-  return null // 200g não tem embalagem vinculada por padrão
+// ---------- Estoque / movimentações / ordens ----------
+export async function resumoPAEstoque() {
+  const d = await getJson('/api/pa/estoque')
+  return d.estoque || []
 }
-
-// Lotes de café cru → agora vêm da API (ver ./lotesCru). As funções
-// carregarLotesCru/loteCruPorId/lotesCruDisponiveis/atualizarSaldoLote são async.
-
-// ---------- PA estoque / movimentações / ordens ----------
-export function carregarPAEstoque() {
-  try {
-    const bruto = localStorage.getItem(CHAVE_PA_ESTOQUE)
-    const dado = bruto ? JSON.parse(bruto) : []
-    return Array.isArray(dado) ? dado : []
-  } catch {
-    return []
-  }
+export async function carregarOrdens() {
+  const d = await getJson('/api/pa/ordens')
+  return (d.ordens || []).map(mapOrdem)
 }
-function salvarPAEstoque(lista) {
-  localStorage.setItem(CHAVE_PA_ESTOQUE, JSON.stringify(lista))
-}
-
-export function carregarPAMovimentacoes() {
-  try {
-    const bruto = localStorage.getItem(CHAVE_PA_MOV)
-    const dado = bruto ? JSON.parse(bruto) : []
-    return Array.isArray(dado) ? dado : []
-  } catch {
-    return []
-  }
-}
-function salvarPAMovimentacoes(lista) {
-  localStorage.setItem(CHAVE_PA_MOV, JSON.stringify(lista))
-}
-
-export function carregarOrdens() {
-  try {
-    const bruto = localStorage.getItem(CHAVE_ORDENS)
-    const dado = bruto ? JSON.parse(bruto) : []
-    return Array.isArray(dado) ? dado : []
-  } catch {
-    return []
-  }
-}
-function salvarOrdens(lista) {
-  localStorage.setItem(CHAVE_ORDENS, JSON.stringify(lista))
-}
-
-// Calcula os números de uma ordem sem persistir (prévia na tela).
-// input: { paId, itens:[{gramatura, quantidade}], lotes:[{loteId, kg}], sobra }
+// Prévia dos custos de uma ordem (não persiste).
 export async function calcularOrdem(input) {
-  const pa = carregarPA().find((p) => p.id === Number(input.paId)) || null
-  const sobra = Number(String(input.sobra).replace(',', '.')) || 0
-
-  // Lotes usados (com custo do próprio lote)
-  const lotesCru = await carregarLotesCru()
-  const lotes = (
-    await Promise.all(
-      (input.lotes || []).map(async (li) => {
-        const lote = lotesCru.find((l) => l.id === Number(li.loteId))
-        const kg = Number(String(li.kg).replace(',', '.')) || 0
-        if (!lote || kg <= 0) return null
-        // Custo médio ponderado ATUAL do grupo (fazenda + variedade) do lote —
-        // não o custoPorKg fixo do lote.
-        const custoPorKg =
-          (await custoMedioGrupo(lote.produtor, lote.variedade)) || Number(lote.custoPorKg) || 0
-        return {
-          loteId: lote.id,
-          loteCodigo: lote.codigo || '',
-          produtor: lote.produtor || '',
-          variedade: lote.variedade || '',
-          saldoDisponivel: Number(lote.saldoDisponivel) || 0,
-          kg,
-          custoPorKg,
-          custoTotalLote: kg * custoPorKg,
-        }
-      }),
-    )
-  ).filter(Boolean)
-
-  const totalCru = lotes.reduce((s, l) => s + l.kg, 0)
-  const custoTotalCru = lotes.reduce((s, l) => s + l.custoTotalLote, 0)
-
-  // Itens por gramatura
-  const resumoIns = resumoPorInsumo()
-  const insumos = carregarInsumos()
-  const itensBrutos = (input.itens || [])
-    .map((it) => ({
-      gramatura: Number(it.gramatura) || 0,
-      quantidade: Number(it.quantidade) || 0,
-    }))
-    .filter((it) => it.gramatura > 0 && it.quantidade > 0)
-
-  const totalKgEmbalado = itensBrutos.reduce((s, it) => s + (it.quantidade * it.gramatura) / 1000, 0)
-  const custoKgEmbalado = totalKgEmbalado > 0 ? custoTotalCru / totalKgEmbalado : 0
-
-  const itens = itensBrutos.map((it) => {
-    const gramaturaKg = it.gramatura / 1000
-    const embalagemId = embalagemDoPA(pa, it.gramatura)
-    const embNome = embalagemId ? insumos.find((i) => i.id === embalagemId)?.nome || 'Embalagem' : null
-    const custoUnitarioCafe = custoKgEmbalado * gramaturaKg
-    const custoUnitarioEmbalagem = embalagemId ? Number(resumoIns[embalagemId]?.custoMedio) || 0 : 0
-    const custoUnitarioTotal = custoUnitarioCafe + custoUnitarioEmbalagem
-    return {
-      gramatura: it.gramatura,
-      quantidade: it.quantidade,
-      embaladoKg: it.quantidade * gramaturaKg,
-      embalagemId,
-      embNome,
-      custoUnitarioCafe,
-      custoUnitarioEmbalagem,
-      custoUnitarioTotal,
-      custoTotalCafe: custoUnitarioCafe * it.quantidade,
-      custoTotalEmbalagem: custoUnitarioEmbalagem * it.quantidade,
-      custoTotalGramatura: custoUnitarioTotal * it.quantidade,
-    }
-  })
-
-  const perda = totalCru - totalKgEmbalado - sobra
-  const custoTotalCafe = itens.reduce((s, it) => s + it.custoTotalCafe, 0)
-  const custoTotalEmbalagens = itens.reduce((s, it) => s + it.custoTotalEmbalagem, 0)
-
-  return {
-    pa,
-    lotes,
-    totalCru,
-    custoTotalCru,
-    totalKgEmbalado,
-    custoKgEmbalado,
-    itens,
-    sobra,
-    perda,
-    custoTotalCafe,
-    custoTotalEmbalagens,
-    custoTotalGeral: custoTotalCafe + custoTotalEmbalagens,
-  }
+  const d = await sendJson('/api/pa/ordens/calcular', 'POST', input)
+  return d.calc
 }
-
-// Registra a ordem: baixa cru, gera sobra (custo zero), baixa embalagens por gramatura
-// e produz os pacotes de PA.
 export async function registrarOrdem(input) {
-  const data = input.data || hojeISO()
-  const calc = await calcularOrdem(input)
-  const { pa, lotes, sobra, itens } = calc
-
-  const descBase = `Produção ${data} — ${pa?.nome || 'PA'}`
-
-  // (a) baixa cada lote de café cru + saída no kardex do cru (custo e grupo do lote)
-  const lotesUsados = []
-  for (const l of lotes) {
-    const novoSaldo = Math.max(0, (Number(l.saldoDisponivel) || 0) - l.kg)
-    await atualizarSaldoLote(l.loteId, novoSaldo)
-    const mov = await registrarMovCru({
-      tipo: TIPOS_MOV.SAIDA,
-      data,
-      descricao: descBase,
-      produtor: l.produtor,
-      variedade: l.variedade,
-      quantidade: l.kg,
-      custoUnitario: l.custoPorKg,
-    })
-    lotesUsados.push({ ...l, movCruId: mov?.id ?? null })
-  }
-
-  // (b) sobra torrada → entrada no kardex do torrado com custo ZERO
-  let movTorradoId = null
-  if (sobra > 0) {
-    const mov = registrarMovimentacaoTorrado({
-      tipo: TIPOS_MOV.ENTRADA,
-      data,
-      descricao: `${descBase} — sobra de torra (custo zero)`,
-      quantidade: sobra,
-      custoUnitario: 0,
-    })
-    movTorradoId = mov?.id ?? null
-  }
-
-  // (c/d) por gramatura: baixa embalagem + registro no estoque de PA
-  let paEstoque = carregarPAEstoque()
-  let paMov = carregarPAMovimentacoes()
-  const ordens = carregarOrdens()
-  const ordemId = ordens.reduce((m, o) => Math.max(m, o.id || 0), 0) + 1
-  let nextEstoqueId = paEstoque.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1
-  let nextMovId = paMov.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1
-
-  const itensOrdem = itens.map((it) => {
-    // baixa embalagem no kardex de insumos
-    let movInsumoId = null
-    if (it.embalagemId && it.quantidade > 0) {
-      const mov = registrarMovimentacaoInsumo({
-        insumoId: it.embalagemId,
-        tipo: TIPOS_MOV.SAIDA,
-        data,
-        descricao: `${descBase} ${formatarGramatura(it.gramatura)}`,
-        quantidade: it.quantidade,
-      })
-      movInsumoId = mov?.id ?? null
-    }
-
-    const paEstoqueId = nextEstoqueId++
-    const paMovId = nextMovId++
-    const registroEstoque = {
-      id: paEstoqueId,
-      paId: pa?.id ?? null,
-      gramatura: it.gramatura,
-      quantidade: it.quantidade,
-      custoUnitario: it.custoUnitarioTotal,
-      custoTotal: it.custoTotalGramatura,
-      data,
-      ordemId,
-    }
-    paEstoque = [...paEstoque, registroEstoque]
-    paMov = [
-      ...paMov,
-      {
-        id: paMovId,
-        ordemId,
-        data,
-        tipo: TIPOS_MOV.ENTRADA,
-        paId: pa?.id ?? null,
-        paNome: pa?.nome || '',
-        gramatura: it.gramatura,
-        quantidade: it.quantidade,
-        custoUnitario: it.custoUnitarioTotal,
-        custoTotal: it.custoTotalGramatura,
-      },
-    ]
-
-    return {
-      gramatura: it.gramatura,
-      quantidade: it.quantidade,
-      embaladoKg: it.embaladoKg,
-      embalagemId: it.embalagemId,
-      embNome: it.embNome,
-      custoUnitarioCafe: it.custoUnitarioCafe,
-      custoUnitarioEmbalagem: it.custoUnitarioEmbalagem,
-      custoUnitarioTotal: it.custoUnitarioTotal,
-      custoTotalGramatura: it.custoTotalGramatura,
-      movInsumoId,
-      paEstoqueId,
-      paMovId,
-    }
-  })
-
-  salvarPAEstoque(paEstoque)
-  salvarPAMovimentacoes(paMov)
-
-  // (e) histórico da ordem
-  const ordem = {
-    id: ordemId,
-    data,
-    paId: pa?.id ?? null,
-    paNome: pa?.nome || '',
-    totalCru: calc.totalCru,
-    custoTotalCru: calc.custoTotalCru,
-    totalKgEmbalado: calc.totalKgEmbalado,
-    custoKgEmbalado: calc.custoKgEmbalado,
-    sobra: calc.sobra,
-    perda: calc.perda,
-    custoTotalCafe: calc.custoTotalCafe,
-    custoTotalEmbalagens: calc.custoTotalEmbalagens,
-    custoTotal: calc.custoTotalGeral,
-    lotes: lotesUsados,
-    itens: itensOrdem,
-    movTorradoId,
-  }
-  salvarOrdens([...ordens, ordem])
-  return ordem
+  const d = await sendJson('/api/pa/ordens', 'POST', input)
+  return mapOrdem(d.ordem)
 }
-
-// Estorna uma ordem: devolve cru aos lotes, remove sobra, devolve embalagens e apaga PA.
 export async function estornarOrdem(ordemId) {
-  const ordens = carregarOrdens()
-  const ordem = ordens.find((o) => o.id === Number(ordemId))
-  if (!ordem) return null
-
-  // (a) devolve cru aos lotes + remove as saídas do kardex do cru
-  for (const l of ordem.lotes || []) {
-    const alvo = await loteCruPorId(Number(l.loteId))
-    if (alvo) {
-      const novoSaldo = (Number(alvo.saldoDisponivel) || 0) + (Number(l.kg) || 0)
-      await atualizarSaldoLote(alvo.id, novoSaldo)
-    }
-    if (l.movCruId != null) await removerMovCru(l.movCruId)
-  }
-
-  // (b) remove a sobra torrada
-  if (ordem.movTorradoId != null) removerMovimentacaoTorrado(ordem.movTorradoId)
-
-  // (c/d) por item: devolve embalagem + remove registros de PA
-  // Compatível com ordens antigas (formato de gramatura única).
-  const itens = ordem.itens || [
-    { movInsumoId: ordem.movInsumoId, paEstoqueId: ordem.paEstoqueId, paMovId: ordem.paMovId },
-  ]
-  const estoqueIds = new Set()
-  const movIds = new Set()
-  for (const it of itens) {
-    if (it.movInsumoId != null) removerMovimentacaoInsumo(it.movInsumoId)
-    if (it.paEstoqueId != null) estoqueIds.add(Number(it.paEstoqueId))
-    if (it.paMovId != null) movIds.add(Number(it.paMovId))
-  }
-  salvarPAEstoque(carregarPAEstoque().filter((r) => !estoqueIds.has(Number(r.id))))
-  salvarPAMovimentacoes(carregarPAMovimentacoes().filter((r) => !movIds.has(Number(r.id))))
-
-  // (e) remove a ordem
-  salvarOrdens(ordens.filter((o) => o.id !== Number(ordem.id)))
-  return ordem
+  await sendJson(`/api/pa/ordens/${ordemId}`, 'DELETE')
 }
-
-// Ordens de produção que consumiram café de um grupo (fazenda + variedade).
-export function ordensDoGrupo(produtor, variedade) {
-  const chave = chaveGrupo(produtor, variedade)
-  return carregarOrdens().filter((o) =>
-    (o.lotes || []).some((l) => chaveGrupo(l.produtor, l.variedade) === chave),
-  )
-}
-
-// Recalcula os custos de uma ordem de produção após o recálculo em cascata do café cru.
-// O novo custo do café de cada lote vem da saída correspondente no kardex do cru (movCruId).
-// Atualiza ordens_producao, pa_estoque e pa_movimentacoes. Retorna { antes, depois } por gramatura.
+// Recalcula os custos de uma ordem após o recálculo em cascata do café cru.
 export async function recalcularOrdemProducao(ordemId) {
-  const ordens = carregarOrdens()
-  const idx = ordens.findIndex((o) => o.id === Number(ordemId))
-  if (idx < 0) return null
-  const ordem = ordens[idx]
-  if (!Array.isArray(ordem.itens) || !Array.isArray(ordem.lotes)) return null // legado sem estrutura
-
-  // Novo custo do café por lote = custoUnitario atual da saída no kardex do cru.
-  const kardex = await carregarKardexCru()
-  const movPorId = {}
-  for (const m of kardex) movPorId[m.id] = m
-
-  let novoCustoTotalCru = 0
-  const lotesNovos = ordem.lotes.map((l) => {
-    const mov = l.movCruId != null ? movPorId[l.movCruId] : null
-    const custoNovo = mov ? Number(mov.custoUnitario) || 0 : Number(l.custoPorKg) || 0
-    novoCustoTotalCru += (Number(l.kg) || 0) * custoNovo
-    return { ...l, custoPorKg: custoNovo, custoTotalLote: (Number(l.kg) || 0) * custoNovo }
-  })
-  const totalKgEmbalado = Number(ordem.totalKgEmbalado) || 0
-  const novoCustoKgEmbalado = totalKgEmbalado > 0 ? novoCustoTotalCru / totalKgEmbalado : 0
-
-  const antesItens = ordem.itens.map((it) => ({
-    gramatura: it.gramatura,
-    quantidade: it.quantidade,
-    custoUnitarioTotal: Number(it.custoUnitarioTotal) || 0,
-  }))
-
-  const itensNovos = ordem.itens.map((it) => {
-    const gramaturaKg = it.gramatura / 1000
-    const custoUnitarioCafe = novoCustoKgEmbalado * gramaturaKg
-    const custoUnitarioEmbalagem = Number(it.custoUnitarioEmbalagem) || 0 // embalagem não muda
-    const custoUnitarioTotal = custoUnitarioCafe + custoUnitarioEmbalagem
-    return {
-      ...it,
-      custoUnitarioCafe,
-      custoUnitarioTotal,
-      custoTotalGramatura: custoUnitarioTotal * it.quantidade,
-    }
-  })
-
-  ordens[idx] = {
-    ...ordem,
-    lotes: lotesNovos,
-    custoTotalCru: novoCustoTotalCru,
-    custoKgEmbalado: novoCustoKgEmbalado,
-    itens: itensNovos,
-    custoTotalCafe: itensNovos.reduce((s, it) => s + it.custoUnitarioCafe * it.quantidade, 0),
-    custoTotal: itensNovos.reduce((s, it) => s + it.custoTotalGramatura, 0),
-  }
-  salvarOrdens(ordens)
-
-  // Atualiza pa_estoque e pa_movimentacoes com o custo corrigido.
-  let paEstoque = carregarPAEstoque()
-  let paMov = carregarPAMovimentacoes()
-  for (const it of itensNovos) {
-    paEstoque = paEstoque.map((r) =>
-      r.id === it.paEstoqueId
-        ? { ...r, custoUnitario: it.custoUnitarioTotal, custoTotal: it.custoTotalGramatura }
-        : r,
-    )
-    paMov = paMov.map((r) =>
-      r.id === it.paMovId
-        ? { ...r, custoUnitario: it.custoUnitarioTotal, custoTotal: it.custoTotalGramatura }
-        : r,
-    )
-  }
-  salvarPAEstoque(paEstoque)
-  salvarPAMovimentacoes(paMov)
-
-  return {
-    ordemId: ordem.id,
-    data: ordem.data,
-    paNome: ordem.paNome,
-    itens: itensNovos.map((it, i) => ({
-      gramatura: it.gramatura,
-      quantidade: it.quantidade,
-      custoUnitarioAntes: antesItens[i].custoUnitarioTotal,
-      custoUnitarioDepois: it.custoUnitarioTotal,
-    })),
-  }
+  return sendJson(`/api/pa/ordens/${ordemId}/recalcular`, 'POST')
 }
-
-// Ajuste avulso de estoque de PA (usado pelo inventário: sobra ou saída não identificada).
-// quantidade positiva = entrada/sobra; negativa = saída/falta.
-export function ajustarEstoquePA({ paId, gramatura, quantidade, descricao, data }) {
-  const q = Number(quantidade) || 0
-  const resumo = resumoPAEstoque().find(
-    (r) => r.paId === Number(paId) && Number(r.gramatura) === Number(gramatura),
-  )
-  const custoUnit = resumo ? Number(resumo.custoMedio) || 0 : 0
-  const paEstoque = carregarPAEstoque()
-  const paMov = carregarPAMovimentacoes()
-  const estId = paEstoque.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1
-  const movId = paMov.reduce((m, r) => Math.max(m, r.id || 0), 0) + 1
-
-  const registro = {
-    id: estId,
-    paId: Number(paId),
-    gramatura: Number(gramatura),
-    quantidade: q,
-    custoUnitario: custoUnit,
-    custoTotal: q * custoUnit,
-    data: data || hojeISO(),
-    ordemId: null,
-    origem: 'inventario',
-  }
-  salvarPAEstoque([...paEstoque, registro])
-  salvarPAMovimentacoes([
-    ...paMov,
-    {
-      id: movId,
-      ordemId: null,
-      data: data || hojeISO(),
-      tipo: q < 0 ? TIPOS_MOV.SAIDA : TIPOS_MOV.AJUSTE,
-      paId: Number(paId),
-      gramatura: Number(gramatura),
-      quantidade: q,
-      custoUnitario: custoUnit,
-      custoTotal: q * custoUnit,
-      descricao: descricao || 'Ajuste de inventário',
-    },
-  ])
-  return registro
+// Ordens que consumiram café de um grupo (fazenda + variedade).
+export async function ordensDoGrupo(produtor, variedade) {
+  const chave = chaveGrupo(produtor, variedade)
+  const ordens = await carregarOrdens()
+  return ordens.filter((o) => (o.lotes || []).some((l) => chaveGrupo(l.produtor, l.variedade) === chave))
 }
-
-// Estoque de PA agregado por produto + gramatura (custo médio ponderado).
-export function resumoPAEstoque() {
-  const registros = carregarPAEstoque()
-  const pas = carregarPA()
-  const nomePorId = {}
-  for (const p of pas) nomePorId[p.id] = p.nome
-
-  const grupos = {}
-  for (const r of registros) {
-    const chave = `${r.paId}|${r.gramatura}`
-    if (!grupos[chave]) {
-      grupos[chave] = {
-        paId: r.paId,
-        paNome: nomePorId[r.paId] || `#${r.paId}`,
-        gramatura: r.gramatura,
-        quantidade: 0,
-        custoTotal: 0,
-      }
-    }
-    grupos[chave].quantidade += Number(r.quantidade) || 0
-    grupos[chave].custoTotal += Number(r.custoTotal) || 0
-  }
-
-  return Object.values(grupos).map((g) => ({
-    ...g,
-    custoMedio: g.quantidade > 0 ? g.custoTotal / g.quantidade : 0,
-    valorTotal: g.custoTotal,
-  }))
+// Ajuste avulso de estoque de PA (usado pelo inventário).
+export async function ajustarEstoquePA(input) {
+  const d = await sendJson('/api/pa/ajuste', 'POST', input)
+  return d.registro
 }

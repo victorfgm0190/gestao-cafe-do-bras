@@ -11,9 +11,8 @@ import { ordensDoGrupo, recalcularOrdemProducao } from './pa'
 // Recalcula as ordens de produção que consumiram café de um grupo
 // (fazenda + variedade) e devolve apenas as ordens efetivamente afetadas.
 export async function recalcularOrdensDoGrupo(produtor, variedade) {
-  const recalculadas = await Promise.all(
-    ordensDoGrupo(produtor, variedade).map((o) => recalcularOrdemProducao(o.id)),
-  )
+  const ordens = await ordensDoGrupo(produtor, variedade)
+  const recalculadas = await Promise.all(ordens.map((o) => recalcularOrdemProducao(o.id)))
   return recalculadas
     .filter(Boolean)
     .filter((r) => r.itens.some((it) => Math.abs(it.custoUnitarioDepois - it.custoUnitarioAntes) > 1e-6))

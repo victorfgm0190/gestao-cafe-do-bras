@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../../components/Topbar'
 import AbasInsumos from './AbasInsumos'
@@ -8,22 +8,31 @@ import '../CafeCru.css'
 import './Insumos.css'
 
 export default function InsumosSaldo() {
-  const linhas = useMemo(() => {
-    const insumos = carregarCadastro()
-    const resumo = resumoPorInsumo()
-    return insumos.map((i) => {
-      const r = resumo[i.id] || { saldoAtual: 0, custoMedio: 0 }
-      const saldo = Number(r.saldoAtual) || 0
-      const custoMedio = Number(r.custoMedio) || 0
-      const minimo = Number(i.estoqueMinimo) || 0
-      return {
-        ...i,
-        saldo,
-        custoMedio,
-        valorTotal: saldo * custoMedio,
-        abaixo: saldo < minimo,
-      }
-    })
+  const [linhas, setLinhas] = useState([])
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const insumos = await carregarCadastro()
+      const resumo = await resumoPorInsumo()
+      const r = insumos.map((i) => {
+        const res = resumo[i.id] || { saldoAtual: 0, custoMedio: 0 }
+        const saldo = Number(res.saldoAtual) || 0
+        const custoMedio = Number(res.custoMedio) || 0
+        const minimo = Number(i.estoqueMinimo) || 0
+        return {
+          ...i,
+          saldo,
+          custoMedio,
+          valorTotal: saldo * custoMedio,
+          abaixo: saldo < minimo,
+        }
+      })
+      if (vivo) setLinhas(r)
+    })()
+    return () => {
+      vivo = false
+    }
   }, [])
 
   const valorGeral = useMemo(

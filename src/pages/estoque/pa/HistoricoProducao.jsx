@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../../components/Topbar'
 import AbasPA from './AbasPA'
@@ -25,8 +25,23 @@ function itensDe(o) {
 }
 
 export default function HistoricoProducao() {
-  const [ordens, setOrdens] = useState(carregarOrdens)
+  const [ordens, setOrdens] = useState([])
   const [expandido, setExpandido] = useState(null)
+
+  async function recarregar() {
+    setOrdens(await carregarOrdens())
+  }
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const dados = await carregarOrdens()
+      if (vivo) setOrdens(dados)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   const ordenadas = useMemo(
     () => [...ordens].sort((a, b) => (b.data || '').localeCompare(a.data || '') || b.id - a.id),
@@ -46,7 +61,7 @@ export default function HistoricoProducao() {
         ACOES.EXCLUIU,
         `Estornou a produção ${formatarData(ordem.data)} — ${ordem.paNome}`,
       )
-      setOrdens(carregarOrdens())
+      await recarregar()
     }
   }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../../components/Topbar'
 import AbasTorrado from './AbasTorrado'
@@ -10,7 +10,18 @@ import './Torrado.css'
 const SALDO_MINIMO = 10 // kg
 
 export default function TorradoSaldo() {
-  const [resumo] = useState(carregarEstoqueTorrado)
+  const [resumo, setResumo] = useState({ saldoAtual: 0, custoMedio: 0, ultimaAtualizacao: '' })
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const dados = await carregarEstoqueTorrado()
+      if (vivo) setResumo(dados)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   const saldo = Number(resumo.saldoAtual) || 0
   const custoMedio = Number(resumo.custoMedio) || 0

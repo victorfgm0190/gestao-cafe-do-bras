@@ -34,7 +34,7 @@ export default function InventarioForm() {
     ;(async () => {
       let inicial = null
       if (st.continuarId) {
-        inicial = carregarInventario(st.continuarId)
+        inicial = await carregarInventario(st.continuarId)
       }
       if (!inicial) {
         inicial = await novoInventario(st.tipo || 'Diário', nomeUsuarioAtual())
@@ -58,32 +58,32 @@ export default function InventarioForm() {
     })
   }
 
-  function persistir(status) {
-    const atualizado = { ...inv, status: status || inv.status }
-    salvarInventario(atualizado)
+  async function persistir(status) {
+    const atualizado = await salvarInventario({ ...inv, status: status || inv.status })
     setInv(atualizado)
     return atualizado
   }
 
-  function salvarRascunho() {
-    persistir('Rascunho')
+  async function salvarRascunho() {
+    await persistir('Rascunho')
     registrarLog(nomeUsuarioAtual(), 'Inventário', ACOES.INCLUIU, `Salvou rascunho de inventário (${inv.tipo})`)
     navigate('/inventario')
   }
 
-  function verResultado() {
-    persistir('Rascunho') // garante id persistido para regularizar
+  async function verResultado() {
+    await persistir('Rascunho') // garante id persistido para regularizar
     setEtapa(2)
   }
 
   async function regularizar(idx, opcoes) {
-    const atualizado = await regularizarItem(inv.id, idx, opcoes)
+    const atualizado = await regularizarItem(inv.id, idx, opcoes, inv.itens)
     if (atualizado) setInv({ ...atualizado })
   }
 
-  function concluir() {
-    const atualizado = concluirInventario(inv.id)
-    if (atualizado) {
+  async function concluir() {
+    const { inventario, concluido } = await concluirInventario(inv.id, inv.itens)
+    if (concluido) {
+      if (inventario) setInv(inventario)
       registrarLog(
         nomeUsuarioAtual(),
         'Inventário',

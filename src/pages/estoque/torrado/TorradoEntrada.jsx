@@ -31,10 +31,20 @@ const FORM_VAZIO = {
 
 export default function TorradoEntrada() {
   const [lotes, setLotes] = useState([])
-  const [torras, setTorras] = useState(carregarTorras)
+  const [torras, setTorras] = useState([])
 
   useEffect(() => {
-    ;(async () => setLotes(await lotesCruDisponiveis()))()
+    let vivo = true
+    ;(async () => {
+      const [ls, ts] = await Promise.all([lotesCruDisponiveis(), carregarTorras()])
+      if (vivo) {
+        setLotes(ls)
+        setTorras(ts)
+      }
+    })()
+    return () => {
+      vivo = false
+    }
   }, [])
   const [form, setForm] = useState(FORM_VAZIO)
   const [erros, setErros] = useState({})
@@ -94,7 +104,7 @@ export default function TorradoEntrada() {
     )
 
     setLotes(await lotesCruDisponiveis())
-    setTorras(carregarTorras())
+    setTorras(await carregarTorras())
     setForm({ ...FORM_VAZIO, data: form.data })
     setErros({})
   }
@@ -114,7 +124,7 @@ export default function TorradoEntrada() {
         `Estornou a torra ${formatarData(torra.data)} — ${torra.loteCodigo} (${formatarKg(torra.pesoTorrado)} torrado)`,
       )
       setLotes(await lotesCruDisponiveis())
-      setTorras(carregarTorras())
+      setTorras(await carregarTorras())
     }
   }
 
@@ -208,7 +218,7 @@ export default function TorradoEntrada() {
     )
 
     setLotes(await lotesCruDisponiveis())
-    setTorras(carregarTorras())
+    setTorras(await carregarTorras())
     setEditId(null)
   }
 

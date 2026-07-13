@@ -23,11 +23,32 @@ function kg3(n) {
 
 export default function OrdemProducao() {
   const navigate = useNavigate()
-  const [pas] = useState(() => carregarPA().filter((p) => p.ativo !== false))
+  const [pas, setPas] = useState([])
   const [lotesCru, setLotesCru] = useState([])
+  const [insumos, setInsumos] = useState([])
+  const [resumoInsumos, setResumoInsumos] = useState({})
 
   useEffect(() => {
     ;(async () => setLotesCru(await lotesCruDisponiveis()))()
+  }, [])
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const [listaPas, listaInsumos, resumo] = await Promise.all([
+        carregarPA(),
+        carregarInsumos(),
+        resumoPorInsumo(),
+      ])
+      if (vivo) {
+        setPas(listaPas.filter((p) => p.ativo !== false))
+        setInsumos(listaInsumos)
+        setResumoInsumos(resumo)
+      }
+    })()
+    return () => {
+      vivo = false
+    }
   }, [])
 
   const [data, setData] = useState(hojeISO())
@@ -38,8 +59,6 @@ export default function OrdemProducao() {
   const [erros, setErros] = useState({})
 
   const pa = pas.find((p) => p.id === Number(paId)) || null
-  const insumos = useMemo(() => carregarInsumos(), [])
-  const resumoInsumos = useMemo(() => resumoPorInsumo(), [])
 
   const itensInput = useMemo(
     () => (pa?.gramaturas || []).map((g) => ({ gramatura: g, quantidade: Number(quantidades[g]) || 0 })),

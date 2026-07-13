@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../../components/Topbar'
 import AbasInsumos from './AbasInsumos'
@@ -6,8 +6,9 @@ import { registrarLog, ACOES } from '../../../utils/auditoria'
 import { nomeUsuarioAtual } from '../../../utils/permissoes'
 import {
   carregarCadastro,
-  salvarCadastro,
-  proximoIdCadastro,
+  criarInsumo,
+  editarInsumo,
+  excluirInsumo,
   formatarQuantidade,
   UNIDADES,
 } from '../../../utils/insumos'
@@ -22,15 +23,25 @@ const FORM_VAZIO = {
 }
 
 export default function InsumosCadastro() {
-  const [insumos, setInsumos] = useState(carregarCadastro)
+  const [insumos, setInsumos] = useState([])
   const [modalAberto, setModalAberto] = useState(false)
   const [editandoId, setEditandoId] = useState(null)
   const [form, setForm] = useState(FORM_VAZIO)
   const [erros, setErros] = useState({})
 
-  function persistir(lista) {
-    setInsumos(lista)
-    salvarCadastro(lista)
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const r = await carregarCadastro()
+      if (vivo) setInsumos(r)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
+
+  async function recarregar() {
+    setInsumos(await carregarCadastro())
   }
 
   function abrirNovo() {
@@ -66,7 +77,7 @@ export default function InsumosCadastro() {
     return Object.keys(e).length === 0
   }
 
-  function salvar(e) {
+  async function salvar(e) {
     e.preventDefault()
     if (!validar()) return
 
@@ -79,30 +90,31 @@ export default function InsumosCadastro() {
 
     const autor = nomeUsuarioAtual()
     if (editandoId) {
-      persistir(insumos.map((i) => (i.id === editandoId ? { ...i, ...dados } : i)))
+      await editarInsumo(editandoId, dados)
       registrarLog(autor, 'Insumos', ACOES.ALTEROU, `Alterou o insumo ${dados.nome}`)
     } else {
-      const novo = { id: proximoIdCadastro(insumos), ...dados }
-      persistir([...insumos, novo])
+      await criarInsumo(dados)
       registrarLog(autor, 'Insumos', ACOES.INCLUIU, `Cadastrou o insumo ${dados.nome}`)
     }
+    await recarregar()
     setModalAberto(false)
   }
 
-  function excluir(id) {
+  async function excluir(id) {
     const insumo = insumos.find((i) => i.id === id)
     if (
       window.confirm(
         'Excluir este insumo? As movimentações já lançadas no kardex serão mantidas.',
       )
     ) {
-      persistir(insumos.filter((i) => i.id !== id))
+      await excluirInsumo(id)
       registrarLog(
         nomeUsuarioAtual(),
         'Insumos',
         ACOES.EXCLUIU,
         insumo ? `Excluiu o insumo ${insumo.nome}` : 'Excluiu um insumo',
       )
+      await recarregar()
     }
   }
 

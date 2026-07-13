@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../../components/Topbar'
 import AbasPA from './AbasPA'
@@ -6,8 +6,9 @@ import { registrarLog, ACOES } from '../../../utils/auditoria'
 import { nomeUsuarioAtual } from '../../../utils/permissoes'
 import {
   carregarPA,
-  salvarPA,
-  proximoIdPA,
+  criarPA,
+  editarPA,
+  excluirPA,
   embalagensPadrao,
   formatarGramatura,
   GRAMATURAS,
@@ -22,16 +23,30 @@ const FORM_VAZIO = {
 }
 
 export default function PACadastro() {
-  const [pas, setPas] = useState(carregarPA)
+  const [pas, setPas] = useState([])
+  const [embalagens, setEmbalagens] = useState({ embalagem250Id: null, embalagem1000Id: null })
   const [modalAberto, setModalAberto] = useState(false)
   const [editandoId, setEditandoId] = useState(null)
   const [form, setForm] = useState(FORM_VAZIO)
   const [erros, setErros] = useState({})
 
-  function persistir(lista) {
-    setPas(lista)
-    salvarPA(lista)
+  async function recarregar() {
+    setPas(await carregarPA())
   }
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const [lista, emb] = await Promise.all([carregarPA(), embalagensPadrao()])
+      if (vivo) {
+        setPas(lista)
+        setEmbalagens(emb)
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   function abrirNovo() {
     setEditandoId(null)
@@ -63,11 +78,11 @@ export default function PACadastro() {
     return Object.keys(e).length === 0
   }
 
-  function salvar(e) {
+  async function salvar(e) {
     e.preventDefault()
     if (!validar()) return
 
-    const { embalagem250Id, embalagem1000Id } = embalagensPadrao()
+    const { embalagem250Id, embalagem1000Id } = embalagens
     const dados = {
       nome: form.nome.trim(),
       gramaturas: form.gramaturas,
@@ -78,25 +93,27 @@ export default function PACadastro() {
 
     const autor = nomeUsuarioAtual()
     if (editandoId) {
-      persistir(pas.map((p) => (p.id === editandoId ? { ...p, ...dados } : p)))
+      await editarPA(editandoId, dados)
       registrarLog(autor, 'Estoque PA', ACOES.ALTEROU, `Alterou o produto ${dados.nome}`)
     } else {
-      persistir([...pas, { id: proximoIdPA(pas), ...dados }])
+      await criarPA(dados)
       registrarLog(autor, 'Estoque PA', ACOES.INCLUIU, `Cadastrou o produto ${dados.nome}`)
     }
+    await recarregar()
     setModalAberto(false)
   }
 
-  function excluir(id) {
+  async function excluir(id) {
     const pa = pas.find((p) => p.id === id)
     if (window.confirm('Excluir este produto? As ordens de produção já registradas serão mantidas.')) {
-      persistir(pas.filter((p) => p.id !== id))
+      await excluirPA(id)
       registrarLog(
         nomeUsuarioAtual(),
         'Estoque PA',
         ACOES.EXCLUIU,
         pa ? `Excluiu o produto ${pa.nome}` : 'Excluiu um produto',
       )
+      await recarregar()
     }
   }
 

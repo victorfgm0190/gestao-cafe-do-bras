@@ -1,13 +1,11 @@
-// Configuração e verificação de estoque mínimo dos itens monitoráveis.
-//
-// localStorage "config_estoque_minimo": { [chave]: valorMinimo }
-//   chaves: insumo:{id} | torrado | pa:{paId}:{gramatura}
+// Configuração e verificação de estoque mínimo — cliente async da API.
+// Config em api/config/estoque-minimo; saldos vêm dos resumos de cada módulo.
 
+import { getJson, sendJson } from './api'
 import { carregarCadastro as carregarInsumos, resumoPorInsumo } from './insumos'
 import { carregarEstoqueTorrado } from './torrado'
 import { carregarPA, resumoPAEstoque, formatarGramatura } from './pa'
 
-const CHAVE = 'config_estoque_minimo'
 const MIN_TORRADO_PADRAO = 10 // kg
 
 export function chaveInsumo(id) {
@@ -20,28 +18,26 @@ export function chavePA(paId, gramatura) {
   return `pa:${paId}:${gramatura}`
 }
 
-export function carregarConfig() {
-  try {
-    const bruto = localStorage.getItem(CHAVE)
-    const dado = bruto ? JSON.parse(bruto) : {}
-    return dado && typeof dado === 'object' ? dado : {}
-  } catch {
-    return {}
-  }
+export async function carregarConfig() {
+  const d = await getJson('/api/config/estoque-minimo')
+  return d.config || {}
 }
-
-export function salvarConfig(cfg) {
-  localStorage.setItem(CHAVE, JSON.stringify(cfg || {}))
+export async function salvarConfig(cfg) {
+  await sendJson('/api/config/estoque-minimo', 'PUT', { config: cfg || {} })
 }
 
 // Lista todos os itens monitoráveis com saldo atual e mínimo (config ou padrão).
-export function itensMonitoraveis() {
-  const cfg = carregarConfig()
+export async function itensMonitoraveis() {
+  const [cfg, insumos, resumoIns, torr, pas, estoquePA] = await Promise.all([
+    carregarConfig(),
+    carregarInsumos(),
+    resumoPorInsumo(),
+    carregarEstoqueTorrado(),
+    carregarPA(),
+    resumoPAEstoque(),
+  ])
   const itens = []
 
-  // Insumos
-  const insumos = carregarInsumos()
-  const resumoIns = resumoPorInsumo()
   for (const i of insumos) {
     const chave = chaveInsumo(i.id)
     const padrao = Number(i.estoqueMinimo) || 0
@@ -55,21 +51,16 @@ export function itensMonitoraveis() {
     })
   }
 
-  // Café torrado a granel
-  const t = carregarEstoqueTorrado()
   const chaveT = chaveTorrado()
   itens.push({
     chave: chaveT,
     tipo: 'Café torrado',
     nome: 'Café torrado a granel',
     unidade: 'kg',
-    saldoAtual: Number(t.saldoAtual) || 0,
+    saldoAtual: Number(torr.saldoAtual) || 0,
     minimo: chaveT in cfg ? Number(cfg[chaveT]) || 0 : MIN_TORRADO_PADRAO,
   })
 
-  // Produtos acabados por gramatura
-  const pas = carregarPA()
-  const estoquePA = resumoPAEstoque()
   const saldoPA = {}
   for (const r of estoquePA) saldoPA[`${r.paId}:${r.gramatura}`] = r.quantidade
   for (const p of pas) {
@@ -90,6 +81,7 @@ export function itensMonitoraveis() {
 }
 
 // Itens cujo saldo está abaixo do mínimo configurado (mínimo > 0).
-export function itensAbaixo() {
-  return itensMonitoraveis().filter((it) => it.minimo > 0 && it.saldoAtual < it.minimo)
+export async function itensAbaixo() {
+  const itens = await itensMonitoraveis()
+  return itens.filter((it) => it.minimo > 0 && it.saldoAtual < it.minimo)
 }

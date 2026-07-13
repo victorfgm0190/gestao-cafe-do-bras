@@ -1,297 +1,73 @@
-// Café torrado (PP): estoque gerado pela Ordem de Torra a partir do café cru.
-//
-// localStorage:
-//   estoque_cafe_torrado → { saldoAtual, custoMedio, ultimaAtualizacao }
-//   kardex_cafe_torrado  → [{ id, data, tipo, descricao, quantidade, custoUnitario,
-//                             custoTotal, saldoAcumulado, custoMedio }]
-//   torras_cafe          → histórico das torras (dados que não cabem no kardex)
-//
-// O café torrado NÃO é comprado: cada torra baixa peso do café cru e gera o torrado.
-//   custo unitário do torrado = (peso_cru × custo_médio_cru) / peso_torrado
+// Café torrado (PP) — cliente async da API (api/torrado). Substitui o localStorage.
+// A torra baixa café cru e gera torrado; toda a orquestração é no backend.
 
-import { hojeISO, formatarData, formatarMoeda } from './formato'
-import {
-  TIPOS_MOV,
-  registrarMovimentacao as registrarMovCru,
-  removerMovimentacao as removerMovCru,
-  carregarKardex as carregarKardexCru,
-  carregarEstoqueResumo as carregarResumoCru,
-  custoMedioGrupo,
-  garantirKardexInicial as garantirKardexCru,
-} from './kardex'
-import {
-  loteCruPorId,
-  lotesCruDisponiveis,
-  atualizarSaldoLote,
-} from './lotesCru'
+import { getJson, sendJson } from './api'
+import { loteCruPorId, lotesCruDisponiveis } from './lotesCru'
 
 // Re-exporta para as telas que importam de torrado.js (TorradoEntrada).
 export { lotesCruDisponiveis, loteCruPorId }
 
-export const CHAVE_ESTOQUE_TORRADO = 'estoque_cafe_torrado'
-export const CHAVE_KARDEX_TORRADO = 'kardex_cafe_torrado'
-export const CHAVE_TORRAS = 'torras_historico'
-const CHAVE_TORRAS_ANTIGA = 'torras_cafe'
-
 export const PERFIS_TORRA = ['Clara', 'Média', 'Escura']
 
-function agoraTexto() {
-  const d = new Date()
-  const p = (n) => String(n).padStart(2, '0')
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
-
-// ---------- Kardex do torrado ----------
-export function carregarKardexTorrado() {
-  try {
-    const bruto = localStorage.getItem(CHAVE_KARDEX_TORRADO)
-    const dado = bruto ? JSON.parse(bruto) : []
-    return Array.isArray(dado) ? dado : []
-  } catch {
-    return []
+const num = (v) => Number(v) || 0
+const mapMov = (r) =>
+  r && {
+    id: r.id,
+    data: typeof r.data === 'string' ? r.data.slice(0, 10) : r.data,
+    tipo: r.tipo,
+    descricao: r.descricao || '',
+    quantidade: num(r.quantidade),
+    custoUnitario: num(r.custo_unitario),
+    custoTotal: num(r.custo_total),
+    saldoAcumulado: num(r.saldo_acumulado),
+    custoMedio: num(r.custo_medio),
   }
-}
-
-function salvarKardexTorrado(lista) {
-  localStorage.setItem(CHAVE_KARDEX_TORRADO, JSON.stringify(lista))
-}
-
-// Remove uma movimentação do kardex do torrado pelo id e reprocessa o resumo.
-export function removerMovimentacaoTorrado(id) {
-  const movs = carregarKardexTorrado().filter((m) => m.id !== Number(id))
-  const { saldoAtual, custoMedio } = recalcular(movs)
-  salvarKardexTorrado(movs)
-  salvarEstoqueTorrado({ saldoAtual, custoMedio, ultimaAtualizacao: agoraTexto() })
-}
-
-function salvarEstoqueTorrado(resumo) {
-  localStorage.setItem(CHAVE_ESTOQUE_TORRADO, JSON.stringify(resumo))
-}
-
-function ordenar(a, b) {
-  return (a.data || '').localeCompare(b.data || '') || (a.id || 0) - (b.id || 0)
-}
-
-// Reprocessa o kardex (fluxo único) preenchendo saldo e custo médio ponderado.
-function recalcular(movs) {
-  let saldo = 0
-  let custoMedio = 0
-  for (const m of movs) {
-    const q = Number(m.quantidade) || 0
-    const custoEntrada = Number(m.custoUnitario) || 0
-    if (q > 0 && custoEntrada > 0) {
-      const novoSaldo = saldo + q
-      custoMedio = novoSaldo > 0 ? (saldo * custoMedio + q * custoEntrada) / novoSaldo : 0
-      saldo = novoSaldo
-      m.custoUnitario = custoEntrada
-    } else {
-      saldo = saldo + q
-      m.custoUnitario = custoMedio
-    }
-    m.saldoAcumulado = saldo
-    m.custoMedio = custoMedio
-    m.custoTotal = Math.abs(q) * m.custoUnitario
-  }
-  return { saldoAtual: saldo, custoMedio }
-}
-
-export function carregarEstoqueTorrado() {
-  try {
-    const bruto = localStorage.getItem(CHAVE_ESTOQUE_TORRADO)
-    if (bruto) return JSON.parse(bruto)
-  } catch {
-    /* deriva abaixo */
-  }
-  const { saldoAtual, custoMedio } = recalcular(carregarKardexTorrado())
-  return { saldoAtual, custoMedio, ultimaAtualizacao: null }
-}
-
-// Registra uma movimentação no kardex do torrado e atualiza o resumo.
-// input: { tipo, descricao, quantidade (positiva), custoUnitario, data, sentido }
-export function registrarMovimentacaoTorrado(input) {
-  const movs = carregarKardexTorrado()
-  const proximoId = movs.reduce((max, m) => Math.max(max, m.id || 0), 0) + 1
-
-  const q = Math.abs(Number(String(input.quantidade).replace(',', '.'))) || 0
-  let delta = q
-  if (input.tipo === TIPOS_MOV.SAIDA || input.tipo === TIPOS_MOV.PERDA) {
-    delta = -q
-  } else if (input.tipo === TIPOS_MOV.AJUSTE) {
-    delta = input.sentido === 'positivo' ? q : -q
-  }
-  const custoUnitario =
-    delta > 0 ? Number(String(input.custoUnitario).replace(',', '.')) || 0 : 0
-
-  const registro = {
-    id: proximoId,
-    data: input.data || hojeISO(),
-    tipo: input.tipo,
-    descricao: input.descricao || '',
-    quantidade: delta,
-    custoUnitario,
-    custoTotal: 0,
-    saldoAcumulado: 0,
-    custoMedio: 0,
+const mapTorra = (r) =>
+  r && {
+    id: r.id,
+    data: typeof r.data === 'string' ? r.data.slice(0, 10) : r.data,
+    loteId: r.lote_id,
+    loteCodigo: r.lote_codigo || '',
+    produtor: r.produtor || '',
+    pesoCru: num(r.peso_cru),
+    pesoTorrado: num(r.peso_torrado),
+    perda: num(r.perda),
+    rendimento: num(r.rendimento),
+    perfil: r.perfil || '',
+    observacao: r.observacao || '',
+    custoPorKgLote: num(r.custo_por_kg_lote),
+    custoTorradoUnit: num(r.custo_torrado_unit),
+    movCruId: r.mov_cru_id ?? null,
+    movTorradoId: r.mov_torrado_id ?? null,
   }
 
-  const todos = [...movs, registro].sort(ordenar)
-  const { saldoAtual, custoMedio } = recalcular(todos)
-  salvarKardexTorrado(todos)
-  salvarEstoqueTorrado({ saldoAtual, custoMedio, ultimaAtualizacao: agoraTexto() })
-  return registro
+// ---------- Kardex / resumo do torrado ----------
+export async function carregarKardexTorrado() {
+  const d = await getJson('/api/torrado/kardex')
+  return (d.movimentacoes || []).map(mapMov)
 }
-
-// ---------- Café cru (origem) ----------
-// Lotes vêm da API (ver ./lotesCru): loteCruPorId/lotesCruDisponiveis/
-// atualizarSaldoLote são async (reexportadas acima).
-
-// Custo médio ponderado atual do café cru (total geral).
-export async function custoMedioCru() {
-  await garantirKardexCru()
-  return Number((await carregarResumoCru()).custoMedio) || 0
+export async function carregarEstoqueTorrado() {
+  return getJson('/api/torrado/resumo') // { saldoAtual, custoMedio, ultimaAtualizacao }
+}
+export async function registrarMovimentacaoTorrado(input) {
+  const d = await sendJson('/api/torrado/movimentacao', 'POST', input)
+  return mapMov(d.movimentacao)
+}
+export async function removerMovimentacaoTorrado(id) {
+  await sendJson(`/api/torrado/movimentacao/${id}`, 'DELETE')
 }
 
 // ---------- Histórico de torras ----------
-export function carregarTorras() {
-  try {
-    let bruto = localStorage.getItem(CHAVE_TORRAS)
-    if (!bruto) {
-      // Migra do nome de chave antigo, se existir.
-      const antigo = localStorage.getItem(CHAVE_TORRAS_ANTIGA)
-      if (antigo) {
-        localStorage.setItem(CHAVE_TORRAS, antigo)
-        bruto = antigo
-      }
-    }
-    const dado = bruto ? JSON.parse(bruto) : []
-    return Array.isArray(dado) ? dado : []
-  } catch {
-    return []
-  }
+export async function carregarTorras() {
+  const d = await getJson('/api/torrado/torras')
+  return (d.torras || []).map(mapTorra)
 }
-
-function salvarTorras(lista) {
-  localStorage.setItem(CHAVE_TORRAS, JSON.stringify(lista))
-}
-
-// Registra uma torra: baixa o café cru, lança saída no kardex do cru e entrada no torrado.
+// Registra uma torra (backend baixa o cru, gera o torrado e grava o histórico).
 // input: { data, loteId, pesoCru, pesoTorrado, perfil, observacao }
 export async function registrarTorra(input) {
-  await garantirKardexCru()
-
-  const pesoCru = Number(String(input.pesoCru).replace(',', '.')) || 0
-  const pesoTorrado = Number(String(input.pesoTorrado).replace(',', '.')) || 0
-  const data = input.data || hojeISO()
-
-  const lote = await loteCruPorId(Number(input.loteId))
-  if (!lote) throw new Error('Lote de café cru não encontrado.')
-
-  // Custo médio ponderado ATUAL do grupo (fazenda + variedade) do lote.
-  const custoLote = (await custoMedioGrupo(lote.produtor, lote.variedade)) || Number(lote.custoPorKg) || 0
-
-  // (a) baixa o peso cru do lote
-  const novoSaldo = Math.max(0, (Number(lote.saldoDisponivel) || 0) - pesoCru)
-  await atualizarSaldoLote(lote.id, novoSaldo)
-
-  // (b) saída no kardex do café cru, valorizada pelo custo do próprio lote
-  const movCru = await registrarMovCru({
-    tipo: TIPOS_MOV.SAIDA,
-    data,
-    descricao: `Torra ${formatarData(data)} — ${lote.codigo || 'lote'}`,
-    produtor: lote.produtor,
-    variedade: lote.variedade,
-    quantidade: pesoCru,
-    custoUnitario: custoLote,
-  })
-
-  // (c) custo do torrado = (peso cru × custo do lote) / peso torrado
-  const custoTorradoUnit = pesoTorrado > 0 ? (pesoCru * custoLote) / pesoTorrado : 0
-
-  // Perda de peso (%) = ((peso cru - peso torrado) / peso cru) × 100
-  const perdaPct = pesoCru > 0 ? ((pesoCru - pesoTorrado) / pesoCru) * 100 : 0
-  const perdaFmt = `${perdaPct.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
-
-  // (d) entrada no kardex do café torrado — descrição enriquecida com custo do cru e perda
-  const movTorrado = registrarMovimentacaoTorrado({
-    tipo: TIPOS_MOV.ENTRADA,
-    data,
-    descricao: `Torra ${formatarData(data)} — ${lote.codigo || 'lote'} (${input.perfil}) | Cru: ${formatarMoeda(custoLote)}/kg | Perda: ${perdaFmt}`,
-    quantidade: pesoTorrado,
-    custoUnitario: custoTorradoUnit,
-  })
-
-  // (f) histórico da torra
-  const torras = carregarTorras()
-  const registro = {
-    id: torras.reduce((max, t) => Math.max(max, t.id || 0), 0) + 1,
-    data,
-    loteId: lote.id,
-    loteCodigo: lote.codigo || '',
-    produtor: lote.produtor || '',
-    pesoCru,
-    pesoTorrado,
-    perda: pesoCru - pesoTorrado,
-    rendimento: pesoCru > 0 ? (pesoTorrado / pesoCru) * 100 : 0,
-    perfil: input.perfil,
-    observacao: (input.observacao || '').trim(),
-    custoPorKgLote: custoLote,
-    custoTorradoUnit,
-    movCruId: movCru?.id ?? null, // saída gerada no kardex do cru
-    movTorradoId: movTorrado?.id ?? null, // entrada gerada no kardex do torrado
-  }
-  salvarTorras([...torras, registro])
-  return registro
+  const d = await sendJson('/api/torrado/torras', 'POST', input)
+  return mapTorra(d.torra)
 }
-
-// Localiza o id da saída do cru gerada por uma torra (usa o id salvo ou casa por descrição).
-async function idSaidaCru(torra) {
-  if (torra.movCruId) return torra.movCruId
-  const alvo = `Torra ${formatarData(torra.data)}`
-  const kardex = await carregarKardexCru()
-  const m = kardex.find(
-    (x) =>
-      x.tipo === TIPOS_MOV.SAIDA &&
-      (x.descricao || '').startsWith(alvo) &&
-      Math.abs((Number(x.quantidade) || 0) + (Number(torra.pesoCru) || 0)) < 1e-6,
-  )
-  return m ? m.id : null
-}
-
-function idEntradaTorrado(torra) {
-  if (torra.movTorradoId) return torra.movTorradoId
-  const alvo = `Torra ${formatarData(torra.data)}`
-  const m = carregarKardexTorrado().find(
-    (x) =>
-      x.tipo === TIPOS_MOV.ENTRADA &&
-      (x.descricao || '').startsWith(alvo) &&
-      Math.abs((Number(x.quantidade) || 0) - (Number(torra.pesoTorrado) || 0)) < 1e-6,
-  )
-  return m ? m.id : null
-}
-
-// Estorna uma torra: devolve o cru ao lote, remove as movimentações geradas e
-// tira a torra do histórico. Recalcula os saldos/custos dos dois kardex.
 export async function estornarTorra(torraId) {
-  const torras = carregarTorras()
-  const torra = torras.find((t) => t.id === Number(torraId))
-  if (!torra) return null
-
-  // (b/e) devolve o peso cru ao lote de origem
-  const lote = await loteCruPorId(Number(torra.loteId))
-  if (lote) {
-    const novoSaldo = (Number(lote.saldoDisponivel) || 0) + (Number(torra.pesoCru) || 0)
-    await atualizarSaldoLote(lote.id, novoSaldo)
-  }
-
-  // (b) estorna a saída no kardex do cru
-  const cruId = await idSaidaCru(torra)
-  if (cruId != null) await removerMovCru(cruId)
-
-  // (c/d) remove a entrada no kardex do torrado e recalcula
-  const torradoId = idEntradaTorrado(torra)
-  if (torradoId != null) removerMovimentacaoTorrado(torradoId)
-
-  // (a) remove a torra do histórico
-  salvarTorras(torras.filter((t) => t.id !== Number(torra.id)))
-  return torra
+  await sendJson(`/api/torrado/torras/${torraId}`, 'DELETE')
 }

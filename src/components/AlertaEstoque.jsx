@@ -26,17 +26,19 @@ export default function AlertaEstoque() {
     // Só verifica com sessão real e autenticada
     const u = getUsuario()
     if (!estaLogado() || !u || !(u.usuario || u.nome)) return
-    let abaixo = []
-    try {
-      abaixo = itensAbaixo()
-    } catch {
-      abaixo = []
-    }
-    if (abaixo.length > 0) {
-      setItens(abaixo)
-      setAberto(true)
-      sessionStorage.setItem(CHAVE_SESSAO, '1')
-    }
+    ;(async () => {
+      let abaixo = []
+      try {
+        abaixo = await itensAbaixo()
+      } catch {
+        abaixo = []
+      }
+      if (abaixo.length > 0) {
+        setItens(abaixo)
+        setAberto(true)
+        sessionStorage.setItem(CHAVE_SESSAO, '1')
+      }
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname])
 

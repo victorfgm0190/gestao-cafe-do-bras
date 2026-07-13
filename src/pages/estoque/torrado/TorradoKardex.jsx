@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../../components/Topbar'
 import AbasTorrado from './AbasTorrado'
@@ -45,8 +45,22 @@ const MOV_VAZIA = {
 }
 
 export default function TorradoKardex() {
-  const [movs, setMovs] = useState(carregarKardexTorrado)
-  const [resumo, setResumo] = useState(carregarEstoqueTorrado)
+  const [movs, setMovs] = useState([])
+  const [resumo, setResumo] = useState({ saldoAtual: 0, custoMedio: 0, ultimaAtualizacao: '' })
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const [k, e] = await Promise.all([carregarKardexTorrado(), carregarEstoqueTorrado()])
+      if (vivo) {
+        setMovs(k)
+        setResumo(e)
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   const [dataInicial, setDataInicial] = useState('')
   const [dataFinal, setDataFinal] = useState('')
@@ -149,7 +163,7 @@ export default function TorradoKardex() {
     return Object.keys(e).length === 0
   }
 
-  function salvarMov(e) {
+  async function salvarMov(e) {
     e.preventDefault()
     if (!validar()) return
 
@@ -163,7 +177,7 @@ export default function TorradoKardex() {
       sentido = 'negativo'
     }
 
-    registrarMovimentacaoTorrado({
+    await registrarMovimentacaoTorrado({
       tipo,
       sentido,
       data: form.data,
@@ -179,8 +193,8 @@ export default function TorradoKardex() {
       `Kardex torrado: ${form.tipo} de ${formatarKg(Number(String(form.quantidade).replace(',', '.')))} — ${form.descricao.trim()}`,
     )
 
-    setMovs(carregarKardexTorrado())
-    setResumo(carregarEstoqueTorrado())
+    setMovs(await carregarKardexTorrado())
+    setResumo(await carregarEstoqueTorrado())
     setModalAberto(false)
   }
 

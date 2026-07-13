@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../../components/Topbar'
 import AbasPA from './AbasPA'
@@ -8,13 +8,21 @@ import '../CafeCru.css'
 import './PA.css'
 
 export default function PAEstoque() {
-  const linhas = useMemo(
-    () =>
-      resumoPAEstoque().sort(
+  const [linhas, setLinhas] = useState([])
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const dados = await resumoPAEstoque()
+      const ordenado = [...dados].sort(
         (a, b) => (a.paNome || '').localeCompare(b.paNome || '') || a.gramatura - b.gramatura,
-      ),
-    [],
-  )
+      )
+      if (vivo) setLinhas(ordenado)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   const valorGeral = useMemo(() => linhas.reduce((s, l) => s + l.valorTotal, 0), [linhas])
   const totalPacotes = useMemo(() => linhas.reduce((s, l) => s + l.quantidade, 0), [linhas])

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../components/Topbar'
 import { registrarLog, ACOES } from '../../utils/auditoria'
@@ -7,26 +7,37 @@ import { itensMonitoraveis, salvarConfig, carregarConfig } from '../../utils/est
 import '../estoque/CafeCru.css'
 
 export default function EstoqueMinimo() {
-  const itens = useMemo(() => itensMonitoraveis(), [])
-  const [valores, setValores] = useState(() => {
-    const v = {}
-    for (const it of itens) v[it.chave] = String(it.minimo ?? 0)
-    return v
-  })
+  const [itens, setItens] = useState([])
+  const [valores, setValores] = useState({})
   const [salvo, setSalvo] = useState(false)
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const lista = await itensMonitoraveis()
+      if (!vivo) return
+      setItens(lista)
+      const v = {}
+      for (const it of lista) v[it.chave] = String(it.minimo ?? 0)
+      setValores(v)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   function atualizar(chave, valor) {
     setValores((v) => ({ ...v, [chave]: valor }))
     setSalvo(false)
   }
 
-  function salvar() {
-    const cfg = carregarConfig()
+  async function salvar() {
+    const cfg = await carregarConfig()
     for (const it of itens) {
       const n = Number(String(valores[it.chave]).replace(',', '.'))
       cfg[it.chave] = Number.isNaN(n) || n < 0 ? 0 : n
     }
-    salvarConfig(cfg)
+    await salvarConfig(cfg)
     registrarLog(nomeUsuarioAtual(), 'Configurações', ACOES.ALTEROU, 'Atualizou os estoques mínimos')
     setSalvo(true)
   }

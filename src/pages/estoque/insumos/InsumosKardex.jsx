@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../../components/Topbar'
 import AbasInsumos from './AbasInsumos'
@@ -45,8 +45,30 @@ const MOV_VAZIA = {
 }
 
 export default function InsumosKardex() {
-  const insumos = useMemo(() => carregarCadastro(), [])
-  const [movs, setMovs] = useState(carregarKardex)
+  const [insumos, setInsumos] = useState([])
+  const [movs, setMovs] = useState([])
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const r = await carregarCadastro()
+      if (vivo) setInsumos(r)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const r = await carregarKardex()
+      if (vivo) setMovs(r)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   const [filtroInsumo, setFiltroInsumo] = useState('todos')
   const [dataInicial, setDataInicial] = useState('')
@@ -164,7 +186,7 @@ export default function InsumosKardex() {
     return Object.keys(e).length === 0
   }
 
-  function salvarMov(e) {
+  async function salvarMov(e) {
     e.preventDefault()
     if (!validar()) return
 
@@ -178,7 +200,7 @@ export default function InsumosKardex() {
       sentido = 'negativo'
     }
 
-    registrarMovimentacaoInsumo({
+    await registrarMovimentacaoInsumo({
       insumoId: form.insumoId,
       tipo,
       sentido,
@@ -196,7 +218,7 @@ export default function InsumosKardex() {
       `Kardex insumo: ${form.tipo} de ${formatarQuantidade(form.quantidade, insumo?.unidade)} — ${insumo?.nome || ''}`,
     )
 
-    setMovs(carregarKardex())
+    setMovs(await carregarKardex())
     setModalAberto(false)
   }
 
