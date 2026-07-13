@@ -24,6 +24,7 @@ import InventarioIndex from './pages/inventario/InventarioIndex'
 import InventarioForm from './pages/inventario/InventarioForm'
 import InventarioDetalhe from './pages/inventario/InventarioDetalhe'
 import AlertaEstoque from './components/AlertaEstoque'
+import ScrollToTop from './components/ScrollToTop'
 import Usuarios from './pages/usuarios/Usuarios'
 import Auditoria from './pages/auditoria/Auditoria'
 import Bling from './pages/integracoes/Bling'
@@ -44,6 +45,7 @@ function RotaProtegida({ children, permiteTrocaPendente = false }) {
 export default function App() {
   return (
     <>
+      <ScrollToTop />
       <AlertaEstoque />
       <Routes>
       <Route path="/" element={<Login />} />
