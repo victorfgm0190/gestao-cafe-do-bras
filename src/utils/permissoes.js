@@ -1,4 +1,5 @@
-import { getUsuario } from './auth'
+import { getUsuario, atualizarSessao } from './auth'
+import { apiUrl } from './api'
 
 const CHAVE_USUARIOS = 'cafe_do_bras_usuarios'
 
@@ -173,41 +174,62 @@ export function proximoIdUsuario(lista) {
 }
 
 /* ---------- Autenticação / sessão ---------- */
-// Valida credenciais e atualiza o último acesso. Retorna o usuário ou null.
-export function autenticarUsuario(identificador, senha) {
-  const ident = String(identificador || '').trim().toLowerCase()
-  const usuarios = carregarUsuarios()
-  const u = usuarios.find((x) => {
-    const casaIdent =
-      x.email.toLowerCase() === ident ||
-      x.nome.toLowerCase() === ident ||
-      (ident === 'admin' && x.email === 'admin@cafedobras.com.br')
-    return casaIdent && x.senha === senha && x.status === 'ativo'
-  })
-  if (!u) return null
+// Valida credenciais no backend (PostgreSQL, senha com bcrypt). Retorna o
+// usuário (mesma estrutura que o front espera, com primeiroAcesso) ou null.
+// Assíncrona: o chamador deve usar `await`.
+export async function autenticarUsuario(identificador, senha) {
+  try {
+    const res = await fetch(apiUrl('/api/auth/login'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: String(identificador || '').trim(),
+        password: senha,
+      }),
+    })
+    if (!res.ok) return null
+    const data = await res.json().catch(() => null)
+    if (!data?.success || !data.usuario) return null
 
-  const { dataHora } = agora()
-  const atualizados = usuarios.map((x) =>
-    x.id === u.id ? { ...x, ultimoAcesso: dataHora } : x,
-  )
-  salvarUsuarios(atualizados)
-  return { ...u, ultimoAcesso: dataHora }
+    const u = data.usuario // { id, username, nome, perfil, permissoes, primeiro_acesso }
+    return {
+      ...u,
+      primeiroAcesso: u.primeiro_acesso === true, // adapta snake→camel esperado pelo front
+      status: 'ativo',
+    }
+  } catch {
+    return null
+  }
 }
 
-// Troca a senha de um usuário e encerra a exigência de primeiro acesso.
-export function atualizarSenha(id, novaSenha) {
-  const usuarios = carregarUsuarios()
-  const atualizados = usuarios.map((u) =>
-    u.id === id ? { ...u, senha: novaSenha, primeiroAcesso: false } : u,
-  )
-  salvarUsuarios(atualizados)
-  return atualizados.find((u) => u.id === id) || null
+// Troca a senha no backend (valida a senha atual com bcrypt e zera
+// primeiro_acesso). Retorna { sucesso, erro? }. Assíncrona.
+export async function atualizarSenha(username, senhaAtual, novaSenha) {
+  try {
+    const res = await fetch(apiUrl('/api/auth/change-password'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, senhaAtual, novaSenha }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data?.success) {
+      return { sucesso: false, erro: data?.error || 'Não foi possível trocar a senha.' }
+    }
+    // Sincroniza a sessão: primeiro acesso deixa de ser exigido.
+    atualizarSessao({ primeiroAcesso: false })
+    return { sucesso: true }
+  } catch {
+    return { sucesso: false, erro: 'Falha de conexão ao trocar a senha.' }
+  }
 }
 
 // Usuário atualmente logado (objeto completo com perfil e permissões atuais)
 export function usuarioLogado() {
   const auth = getUsuario()
   if (!auth) return null
+  // Sessão via API: o objeto guardado JÁ é o usuário completo.
+  if (auth.perfil && auth.permissoes) return auth
+  // Fallback para sessões antigas: reconstrói a partir da lista local.
   const usuarios = carregarUsuarios()
   if (auth.email) {
     const u = usuarios.find((x) => x.email === auth.email)

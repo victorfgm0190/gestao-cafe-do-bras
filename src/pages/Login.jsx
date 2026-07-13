@@ -30,20 +30,26 @@ export default function Login() {
   const [usuario, setUsuario] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
+  const [carregando, setCarregando] = useState(false)
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setErro('')
-    const autenticado = autenticarUsuario(usuario, senha)
-    if (autenticado) {
-      login(autenticado)
-      if (autenticado.primeiroAcesso) {
-        navigate('/trocar-senha')
+    setCarregando(true)
+    try {
+      const autenticado = await autenticarUsuario(usuario, senha)
+      if (autenticado) {
+        login(autenticado)
+        if (autenticado.primeiroAcesso) {
+          navigate('/trocar-senha')
+        } else {
+          navigate('/dashboard')
+        }
       } else {
-        navigate('/dashboard')
+        setErro('Usuário ou senha inválidos, ou usuário inativo.')
       }
-    } else {
-      setErro('Usuário ou senha inválidos, ou usuário inativo.')
+    } finally {
+      setCarregando(false)
     }
   }
 
@@ -89,8 +95,8 @@ export default function Login() {
 
           {erro && <div className="login-erro">{erro}</div>}
 
-          <button type="submit" className="btn btn-primary login-botao">
-            Entrar
+          <button type="submit" className="btn btn-primary login-botao" disabled={carregando}>
+            {carregando ? 'Entrando…' : 'Entrar'}
           </button>
         </form>
 

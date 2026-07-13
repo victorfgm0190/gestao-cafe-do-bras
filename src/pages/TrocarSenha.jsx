@@ -34,6 +34,7 @@ export default function TrocarSenha() {
   const [novaSenha, setNovaSenha] = useState('')
   const [confirmar, setConfirmar] = useState('')
   const [erro, setErro] = useState('')
+  const [salvando, setSalvando] = useState(false)
 
   // Precisa estar logado para trocar a senha
   useEffect(() => {
@@ -44,14 +45,12 @@ export default function TrocarSenha() {
 
   const obrigatorio = usuario.primeiroAcesso === true
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     setErro('')
 
-    if (senhaAtual !== usuario.senha) {
-      setErro('Senha atual incorreta.')
-      return
-    }
+    // A senha atual passou a ser validada no backend (não guardamos mais a
+    // senha em texto no cliente). As demais checagens seguem no cliente.
     if (novaSenha.length < 6) {
       setErro('A nova senha deve ter no mínimo 6 caracteres.')
       return
@@ -65,9 +64,18 @@ export default function TrocarSenha() {
       return
     }
 
-    atualizarSenha(usuario.id, novaSenha)
-    registrarLog(nomeUsuarioAtual(), 'Usuários', ACOES.TROCOU_SENHA, 'Trocou a própria senha')
-    navigate('/dashboard', { replace: true })
+    setSalvando(true)
+    try {
+      const r = await atualizarSenha(usuario.username, senhaAtual, novaSenha)
+      if (!r.sucesso) {
+        setErro(r.erro || 'Não foi possível trocar a senha.')
+        return
+      }
+      registrarLog(nomeUsuarioAtual(), 'Usuários', ACOES.TROCOU_SENHA, 'Trocou a própria senha')
+      navigate('/dashboard', { replace: true })
+    } finally {
+      setSalvando(false)
+    }
   }
 
   return (
@@ -132,8 +140,8 @@ export default function TrocarSenha() {
 
           {erro && <div className="login-erro">{erro}</div>}
 
-          <button type="submit" className="btn btn-primary login-botao">
-            Salvar nova senha
+          <button type="submit" className="btn btn-primary login-botao" disabled={salvando}>
+            {salvando ? 'Salvando…' : 'Salvar nova senha'}
           </button>
         </form>
 
