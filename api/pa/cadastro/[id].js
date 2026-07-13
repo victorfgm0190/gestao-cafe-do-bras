@@ -23,13 +23,18 @@ export default async function handler(req, res) {
 
     const b = await lerCorpo(req)
     const gramaturas = Array.isArray(b.gramaturas) ? b.gramaturas.map(Number) : pa.gramaturas
+    const perda =
+      b.perdaTorraPadrao !== undefined
+        ? Number(String(b.perdaTorraPadrao).replace(',', '.')) || 0
+        : pa.perda_torra_padrao
     const linhas = await sql`
       UPDATE pa_cadastro SET
         nome = ${b.nome !== undefined ? String(b.nome).trim() : pa.nome},
         gramaturas = ${JSON.stringify(gramaturas)}::jsonb,
         embalagem_250_id = ${b.embalagem250Id !== undefined ? b.embalagem250Id : pa.embalagem_250_id},
         embalagem_1000_id = ${b.embalagem1000Id !== undefined ? b.embalagem1000Id : pa.embalagem_1000_id},
-        ativo = ${b.ativo !== undefined ? !!b.ativo : pa.ativo}
+        ativo = ${b.ativo !== undefined ? !!b.ativo : pa.ativo},
+        perda_torra_padrao = ${perda}
       WHERE id = ${id}
       RETURNING *
     `

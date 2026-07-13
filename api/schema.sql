@@ -227,6 +227,8 @@ CREATE TABLE IF NOT EXISTS pa_cadastro (
   ativo BOOLEAN NOT NULL DEFAULT true,
   criado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
+-- Perda de torra padrão (%) por produto — sugere o café cru na ordem de produção.
+ALTER TABLE pa_cadastro ADD COLUMN IF NOT EXISTS perda_torra_padrao DECIMAL(6,2) NOT NULL DEFAULT 10;
 
 
 -- ============================================================================

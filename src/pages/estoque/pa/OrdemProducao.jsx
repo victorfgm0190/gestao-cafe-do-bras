@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Topbar from '../../../components/Topbar'
 import AbasPA from './AbasPA'
-import { formatarMoeda, formatarKg, hojeISO } from '../../../utils/formato'
+import { formatarMoeda, hojeISO } from '../../../utils/formato'
 import { registrarLog, ACOES } from '../../../utils/auditoria'
 import { nomeUsuarioAtual } from '../../../utils/permissoes'
 import {
@@ -17,9 +17,11 @@ import { carregarCadastro as carregarInsumos, resumoPorInsumo } from '../../../u
 import '../CafeCru.css'
 import './PA.css'
 
-function kg3(n) {
-  return `${(Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} kg`
+// Pesos são informados/exibidos em GRAMAS nesta tela; o backend trabalha em kg.
+function g0(n) {
+  return `${Math.round(Number(n) || 0).toLocaleString('pt-BR')} g`
 }
+const gToKg = (v) => (Number(String(v).replace(',', '.')) || 0) / 1000
 
 export default function OrdemProducao() {
   const navigate = useNavigate()
@@ -54,8 +56,8 @@ export default function OrdemProducao() {
   const [data, setData] = useState(hojeISO())
   const [paId, setPaId] = useState('')
   const [quantidades, setQuantidades] = useState({}) // { [gramatura]: qtd }
-  const [linhasLote, setLinhasLote] = useState([{ loteId: '', kg: '' }])
-  const [sobra, setSobra] = useState('')
+  const [linhasLote, setLinhasLote] = useState([{ loteId: '', g: '' }]) // g = gramas
+  const [sobra, setSobra] = useState('') // gramas
   const [erros, setErros] = useState({})
 
   const pa = pas.find((p) => p.id === Number(paId)) || null
@@ -64,6 +66,13 @@ export default function OrdemProducao() {
     () => (pa?.gramaturas || []).map((g) => ({ gramatura: g, quantidade: Number(quantidades[g]) || 0 })),
     [pa, quantidades],
   )
+
+  // Converte os pesos informados em gramas para kg (formato do backend).
+  const lotesKg = useMemo(
+    () => linhasLote.map((l) => ({ loteId: l.loteId, kg: gToKg(l.g) })),
+    [linhasLote],
+  )
+  const sobraKg = gToKg(sobra)
 
   const [calc, setCalc] = useState({
     pa: null,
@@ -83,29 +92,46 @@ export default function OrdemProducao() {
   useEffect(() => {
     let vivo = true
     ;(async () => {
-      const r = await calcularOrdem({ paId, itens: itensInput, lotes: linhasLote, sobra })
+      const r = await calcularOrdem({ paId, itens: itensInput, lotes: lotesKg, sobra: sobraKg })
       if (vivo) setCalc(r)
     })()
     return () => {
       vivo = false
     }
-  }, [paId, itensInput, linhasLote, sobra])
+  }, [paId, itensInput, lotesKg, sobraKg])
+
+  // ---- Perda esperada × real (tudo em gramas) ----
+  const perdaPadrao = Number(pa?.perdaTorraPadrao) || 0
+  const pesoEmbaladoG = (Number(calc.totalKgEmbalado) || 0) * 1000
+  const sugestaoCruG =
+    perdaPadrao > 0 && perdaPadrao < 100 && pesoEmbaladoG > 0
+      ? pesoEmbaladoG / (1 - perdaPadrao / 100)
+      : pesoEmbaladoG
+  const cafeUsadoG = (Number(calc.totalCru) || 0) * 1000
+  const sobraG = (Number(calc.sobra) || 0) * 1000
+  const perdaRealG = (Number(calc.perda) || 0) * 1000
+  const perdaRealPct = cafeUsadoG > 0 ? (perdaRealG / cafeUsadoG) * 100 : 0
+  const perdaEsperadaG = cafeUsadoG * (perdaPadrao / 100)
+  const excedenteG = perdaRealG - perdaEsperadaG
+  const dentroEsperado = perdaRealPct <= perdaPadrao + 1e-9
 
   function embSaldo(gramatura) {
     const id = embalagemDoPA(pa, gramatura)
     if (!id) return null
-    return { nome: insumos.find((i) => i.id === id)?.nome || 'Embalagem', saldo: Number(resumoInsumos[id]?.saldoAtual) || 0 }
+    return {
+      nome: insumos.find((i) => i.id === id)?.nome || 'Embalagem',
+      saldo: Number(resumoInsumos[id]?.saldoAtual) || 0,
+    }
   }
 
   function setQtd(g, valor) {
     setQuantidades((q) => ({ ...q, [g]: valor }))
   }
-
   function atualizarLinha(i, campo, valor) {
     setLinhasLote((linhas) => linhas.map((l, idx) => (idx === i ? { ...l, [campo]: valor } : l)))
   }
   function adicionarLinha() {
-    setLinhasLote((l) => [...l, { loteId: '', kg: '' }])
+    setLinhasLote((l) => [...l, { loteId: '', g: '' }])
   }
   function removerLinha(i) {
     setLinhasLote((l) => (l.length > 1 ? l.filter((_, idx) => idx !== i) : l))
@@ -117,26 +143,22 @@ export default function OrdemProducao() {
     const algumaQtd = itensInput.some((it) => it.quantidade > 0)
     if (!algumaQtd) e.itens = 'Informe a quantidade de pelo menos uma gramatura.'
 
-    const linhasValidas = linhasLote.filter(
-      (l) => l.loteId && (Number(String(l.kg).replace(',', '.')) || 0) > 0,
-    )
+    const linhasValidas = linhasLote.filter((l) => l.loteId && gToKg(l.g) > 0)
     if (linhasValidas.length === 0) e.lotes = 'Adicione ao menos um lote com quantidade.'
 
     const somaPorLote = {}
     for (const l of linhasValidas) {
-      const kg = Number(String(l.kg).replace(',', '.')) || 0
-      somaPorLote[l.loteId] = (somaPorLote[l.loteId] || 0) + kg
+      somaPorLote[l.loteId] = (somaPorLote[l.loteId] || 0) + gToKg(l.g)
     }
     for (const [loteId, kg] of Object.entries(somaPorLote)) {
       const lote = lotesCru.find((x) => x.id === Number(loteId))
       if (lote && kg > (Number(lote.saldoDisponivel) || 0)) {
-        e.lotes = `Lote ${lote.codigo}: máximo ${formatarKg(lote.saldoDisponivel)} disponível.`
+        e.lotes = `Lote ${lote.codigo}: máximo ${g0((Number(lote.saldoDisponivel) || 0) * 1000)} disponível.`
       }
     }
 
-    const sobraN = Number(String(sobra).replace(',', '.')) || 0
-    if (sobraN < 0) e.sobra = 'Sobra inválida.'
-    if (calc.perda < -1e-9) e.sobra = 'Embalado + sobra excedem o café cru utilizado.'
+    if (sobraKg < 0) e.sobra = 'Sobra inválida.'
+    if (Number(calc.perda) < -1e-9) e.sobra = 'Embalado + sobra excedem o café cru utilizado.'
 
     setErros(e)
     return Object.keys(e).length === 0
@@ -145,7 +167,7 @@ export default function OrdemProducao() {
   async function confirmar() {
     if (!validar()) return
 
-    const ordem = await registrarOrdem({ data, paId, itens: itensInput, lotes: linhasLote, sobra })
+    const ordem = await registrarOrdem({ data, paId, itens: itensInput, lotes: lotesKg, sobra: sobraKg })
 
     registrarLog(
       nomeUsuarioAtual(),
@@ -156,14 +178,14 @@ export default function OrdemProducao() {
 
     setPaId('')
     setQuantidades({})
-    setLinhasLote([{ loteId: '', kg: '' }])
+    setLinhasLote([{ loteId: '', g: '' }])
     setSobra('')
     setErros({})
     setLotesCru(await lotesCruDisponiveis())
     navigate('/estoque/pa/historico')
   }
 
-  const podeConfirmar = paId && itensInput.some((it) => it.quantidade > 0) && calc.totalCru > 0
+  const podeConfirmar = paId && itensInput.some((it) => it.quantidade > 0) && Number(calc.totalCru) > 0
 
   return (
     <div className="pagina">
@@ -246,8 +268,8 @@ export default function OrdemProducao() {
 
           <div className="pa-calc" style={{ marginTop: 14 }}>
             <div className="pa-calc-item">
-              <span className="pa-calc-label">Total embalado</span>
-              <strong className="pa-calc-valor dourado">{kg3(calc.totalKgEmbalado)}</strong>
+              <span className="pa-calc-label">Peso embalado</span>
+              <strong className="pa-calc-valor dourado">{g0(pesoEmbaladoG)}</strong>
             </div>
           </div>
         </section>
@@ -257,6 +279,15 @@ export default function OrdemProducao() {
           <div className="pa-etapa-titulo">
             <span className="pa-etapa-num">2</span> Café utilizado (mix de lotes)
           </div>
+
+          {pa && pesoEmbaladoG > 0 && (
+            <div className="pa-sugestao">
+              💡 Sugestão de café cru (perda padrão {perdaPadrao.toLocaleString('pt-BR')}%):{' '}
+              <strong>{g0(sugestaoCruG)}</strong>
+              <span className="pa-disp"> — apenas uma sugestão; informe abaixo o que foi realmente usado.</span>
+            </div>
+          )}
+
           {linhasLote.map((linha, i) => {
             const loteLinha = lotesCru.find((l) => l.id === Number(linha.loteId)) || null
             const saldoLinha = Number(loteLinha?.saldoDisponivel) || 0
@@ -269,27 +300,27 @@ export default function OrdemProducao() {
                     {lotesCru.map((l) => (
                       <option key={l.id} value={l.id}>
                         {l.codigo} — {l.produtor}
-                        {l.variedade ? ` / ${l.variedade}` : ''} ({formatarKg(l.saldoDisponivel)})
+                        {l.variedade ? ` / ${l.variedade}` : ''} ({g0((Number(l.saldoDisponivel) || 0) * 1000)})
                       </option>
                     ))}
                   </select>
                   {loteLinha && (
-                    <span className={`pa-disp ${saldoLinha < 1 ? 'baixo' : 'ok'}`}>
+                    <span className={`pa-disp ${saldoLinha < 0.001 ? 'baixo' : 'ok'}`}>
                       {loteLinha.produtor}
                       {loteLinha.variedade ? ` · ${loteLinha.variedade}` : ''} — Disponível:{' '}
-                      {formatarKg(saldoLinha)}
+                      {g0(saldoLinha * 1000)}
                     </span>
                   )}
                 </label>
                 <label className="campo">
-                  <span className="campo-label">Kg utilizados</span>
+                  <span className="campo-label">Gramas utilizadas</span>
                   <input
                     type="number"
                     min="0"
-                    step="0.01"
-                    value={linha.kg}
-                    onChange={(e) => atualizarLinha(i, 'kg', e.target.value)}
-                    placeholder="0,00"
+                    step="1"
+                    value={linha.g}
+                    onChange={(e) => atualizarLinha(i, 'g', e.target.value)}
+                    placeholder="0 g"
                   />
                 </label>
                 <button
@@ -311,7 +342,7 @@ export default function OrdemProducao() {
           <div className="pa-calc" style={{ marginTop: 14 }}>
             <div className="pa-calc-item">
               <span className="pa-calc-label">Total café cru utilizado</span>
-              <strong className="pa-calc-valor">{formatarKg(calc.totalCru)}</strong>
+              <strong className="pa-calc-valor">{g0(cafeUsadoG)}</strong>
             </div>
             <div className="pa-calc-item">
               <span className="pa-calc-label">Custo do café cru</span>
@@ -327,14 +358,14 @@ export default function OrdemProducao() {
           </div>
           <div className="pa-form-linha">
             <label className="campo">
-              <span className="campo-label">Sobra de torrado sem embalar (kg)</span>
+              <span className="campo-label">Sobra de torrado sem embalar (g)</span>
               <input
                 type="number"
                 min="0"
-                step="0.01"
+                step="1"
                 value={sobra}
                 onChange={(e) => setSobra(e.target.value)}
-                placeholder="0,00"
+                placeholder="0 g"
               />
               {erros.sobra && <span className="campo-erro">{erros.sobra}</span>}
             </label>
@@ -342,23 +373,43 @@ export default function OrdemProducao() {
           <div className="pa-calc" style={{ marginTop: 14 }}>
             <div className="pa-calc-item">
               <span className="pa-calc-label">Cru usado</span>
-              <strong className="pa-calc-valor">{formatarKg(calc.totalCru)}</strong>
+              <strong className="pa-calc-valor">{g0(cafeUsadoG)}</strong>
             </div>
             <div className="pa-calc-item">
               <span className="pa-calc-label">Embalado</span>
-              <strong className="pa-calc-valor">{formatarKg(calc.totalKgEmbalado)}</strong>
+              <strong className="pa-calc-valor">{g0(pesoEmbaladoG)}</strong>
             </div>
             <div className="pa-calc-item">
               <span className="pa-calc-label">Sobra torrada</span>
-              <strong className="pa-calc-valor">{formatarKg(calc.sobra)}</strong>
+              <strong className="pa-calc-valor">{g0(sobraG)}</strong>
             </div>
             <div className="pa-calc-item">
-              <span className="pa-calc-label">Perda</span>
-              <strong className={`pa-calc-valor ${calc.perda < -1e-9 ? 'danger' : ''}`}>
-                {formatarKg(calc.perda)}
+              <span className="pa-calc-label">Perda real</span>
+              <strong className={`pa-calc-valor ${perdaRealG < -1e-6 ? 'danger' : ''}`}>
+                {g0(perdaRealG)} ({perdaRealPct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%)
               </strong>
             </div>
           </div>
+
+          {/* Comparativo perda real × esperada */}
+          {cafeUsadoG > 0 && Number(calc.perda) >= -1e-9 && (
+            <div className={`pa-perda-comp ${dentroEsperado ? 'ok' : 'alerta'}`} style={{ marginTop: 12 }}>
+              {dentroEsperado ? (
+                <>
+                  ✅ Dentro do esperado — esperado{' '}
+                  {perdaPadrao.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%, real{' '}
+                  {perdaRealPct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%.
+                </>
+              ) : (
+                <>
+                  ⚠️ Perda acima do esperado — esperado{' '}
+                  {perdaPadrao.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%, real{' '}
+                  {perdaRealPct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% (+
+                  {g0(excedenteG)} acima do esperado).
+                </>
+              )}
+            </div>
+          )}
         </section>
 
         {/* ETAPA 4 */}
@@ -427,12 +478,14 @@ export default function OrdemProducao() {
             <div className="pa-resumo-linha">
               <span className="pa-resumo-rot">Sobra torrada (custo zero)</span>
               <span className="pa-resumo-val">
-                {formatarKg(calc.sobra)} → {formatarMoeda(0)}
+                {g0(sobraG)} → {formatarMoeda(0)}
               </span>
             </div>
             <div className="pa-resumo-linha">
-              <span className="pa-resumo-rot">Perda (informação)</span>
-              <span className="pa-resumo-val">{formatarKg(calc.perda)}</span>
+              <span className="pa-resumo-rot">Perda real (informação)</span>
+              <span className="pa-resumo-val">
+                {g0(perdaRealG)} ({perdaRealPct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%)
+              </span>
             </div>
             <div className="pa-resumo-linha pa-resumo-total">
               <span className="pa-resumo-rot">Custo total da produção</span>

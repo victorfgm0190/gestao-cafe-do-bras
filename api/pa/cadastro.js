@@ -18,12 +18,13 @@ export default async function handler(req, res) {
     const nome = String(b.nome || '').trim()
     if (!nome) return enviarErro(res, 400, 'Informe o nome do produto.')
     const gramaturas = Array.isArray(b.gramaturas) ? b.gramaturas.map(Number) : []
+    const perda = b.perdaTorraPadrao !== undefined ? Number(String(b.perdaTorraPadrao).replace(',', '.')) || 0 : 10
 
     const linhas = await sql`
-      INSERT INTO pa_cadastro (nome, gramaturas, embalagem_250_id, embalagem_1000_id, ativo)
+      INSERT INTO pa_cadastro (nome, gramaturas, embalagem_250_id, embalagem_1000_id, ativo, perda_torra_padrao)
       VALUES (${nome}, ${JSON.stringify(gramaturas)}::jsonb,
               ${b.embalagem250Id ?? null}, ${b.embalagem1000Id ?? null},
-              ${b.ativo !== undefined ? !!b.ativo : true})
+              ${b.ativo !== undefined ? !!b.ativo : true}, ${perda})
       RETURNING *
     `
     return enviarJson(res, 201, { produto: linhas[0] })

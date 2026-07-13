@@ -25,6 +25,7 @@ const mapPA = (r) =>
     embalagem250Id: r.embalagem_250_id ?? null,
     embalagem1000Id: r.embalagem_1000_id ?? null,
     ativo: r.ativo,
+    perdaTorraPadrao: r.perda_torra_padrao != null ? num(r.perda_torra_padrao) : 10,
   }
 const mapOrdem = (o) =>
   o && {

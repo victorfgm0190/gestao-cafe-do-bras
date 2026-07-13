@@ -19,6 +19,7 @@ import './PA.css'
 const FORM_VAZIO = {
   nome: '',
   gramaturas: [250, 1000],
+  perdaTorraPadrao: '10',
   ativo: true,
 }
 
@@ -57,7 +58,12 @@ export default function PACadastro() {
 
   function abrirEdicao(pa) {
     setEditandoId(pa.id)
-    setForm({ nome: pa.nome, gramaturas: [...(pa.gramaturas || [])], ativo: pa.ativo !== false })
+    setForm({
+      nome: pa.nome,
+      gramaturas: [...(pa.gramaturas || [])],
+      perdaTorraPadrao: String(pa.perdaTorraPadrao ?? 10),
+      ativo: pa.ativo !== false,
+    })
     setErros({})
     setModalAberto(true)
   }
@@ -88,6 +94,7 @@ export default function PACadastro() {
       gramaturas: form.gramaturas,
       embalagem250Id,
       embalagem1000Id,
+      perdaTorraPadrao: Number(String(form.perdaTorraPadrao).replace(',', '.')) || 0,
       ativo: form.ativo,
     }
 
@@ -221,6 +228,22 @@ export default function PACadastro() {
                 </div>
                 {erros.gramaturas && <span className="campo-erro">{erros.gramaturas}</span>}
               </div>
+
+              <label className="campo">
+                <span className="campo-label">Perda de torra padrão (%)</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={form.perdaTorraPadrao}
+                  onChange={(e) => setForm((f) => ({ ...f, perdaTorraPadrao: e.target.value }))}
+                  placeholder="Ex.: 10"
+                />
+                <span className="campo-ajuda">
+                  Usada para sugerir o café cru necessário na ordem de produção.
+                </span>
+              </label>
 
               <label className="pa-check">
                 <input
