@@ -121,6 +121,29 @@ export async function calcularOrdem(input) {
   }
 }
 
+// Ajuste avulso de estoque de PA (usado pelo inventário: sobra ou saída não
+// identificada). quantidade positiva = entrada; negativa = saída.
+export async function ajustarEstoquePA({ paId, gramatura, quantidade, descricao, data }) {
+  const q = num(quantidade)
+  const dataRef = data || new Date().toISOString().slice(0, 10)
+  const resumo = await resumoPAEstoque()
+  const atual = resumo.find((r) => r.paId === Number(paId) && Number(r.gramatura) === Number(gramatura))
+  const custoUnit = atual ? Number(atual.custoMedio) || 0 : 0
+
+  const est = await sql`
+    INSERT INTO pa_estoque (pa_id, gramatura, quantidade, custo_unitario, custo_total, data, ordem_id, origem)
+    VALUES (${Number(paId)}, ${Number(gramatura)}, ${q}, ${custoUnit}, ${q * custoUnit}, ${dataRef}, NULL, 'inventario')
+    RETURNING *
+  `
+  await sql`
+    INSERT INTO pa_movimentacoes
+      (ordem_id, data, tipo, pa_id, gramatura, quantidade, custo_unitario, custo_total, descricao)
+    VALUES (NULL, ${dataRef}, ${q < 0 ? TIPOS_MOV.SAIDA : TIPOS_MOV.AJUSTE}, ${Number(paId)}, ${Number(gramatura)},
+            ${q}, ${custoUnit}, ${q * custoUnit}, ${descricao || 'Ajuste de inventário'})
+  `
+  return est[0]
+}
+
 // Estoque de PA agregado por produto + gramatura (custo médio ponderado).
 export async function resumoPAEstoque() {
   const registros = await sql`SELECT pa_id, gramatura, quantidade, custo_total FROM pa_estoque`

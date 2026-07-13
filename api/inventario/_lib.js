@@ -1,0 +1,140 @@
+// Lógica de negócio do inventário inteligente.
+// Arquivos começando com "_" NÃO viram rotas na Vercel.
+
+import { sql } from '../db.js'
+import { resumoTorrado } from '../torrado/_lib.js'
+import { resumoPAEstoque } from '../pa/_lib.js'
+import { resumoPorInsumo } from '../insumos/_lib.js'
+
+export const TIPOS_INVENTARIO = ['Diário', 'Semanal', 'Mensal']
+
+export const CATEGORIAS = {
+  CRU: 'cafe_cru',
+  TORRADO: 'cafe_torrado',
+  EMBALADO: 'produto_embalado',
+  INSUMO: 'insumo',
+}
+
+export function calcularItem(base) {
+  const saldoSistema = Number(base.saldoSistema) || 0
+  const saldoFisico = base.saldoFisico == null ? saldoSistema : Number(base.saldoFisico) || 0
+  const diferenca = saldoFisico - saldoSistema
+  const status = diferenca > 1e-9 ? 'sobra' : diferenca < -1e-9 ? 'falta' : 'ok'
+  return { ...base, saldoSistema, saldoFisico, diferenca, status }
+}
+
+function formatarGramatura(g) {
+  const n = Number(g) || 0
+  return n === 1000 ? '1kg' : `${n}g`
+}
+
+// Monta os itens a partir dos saldos atuais do sistema (todos os módulos).
+export async function gerarItensSistema() {
+  const itens = []
+
+  // Café cru (por lote com saldo)
+  const lotes = await sql`SELECT * FROM lotes_cafe_cru WHERE saldo_disponivel > 0 ORDER BY id ASC`
+  for (const l of lotes) {
+    itens.push(
+      calcularItem({
+        categoria: CATEGORIAS.CRU,
+        referencia: l.codigo_lote || `#${l.id}`,
+        descricao: `${l.fazenda || '—'}${l.variedade ? ' / ' + l.variedade : ''}`,
+        unidade: 'kg',
+        saldoSistema: Number(l.saldo_disponivel) || 0,
+        saldoFisico: null,
+        regularizado: false,
+        regularizacao: null,
+        loteId: l.id,
+        loteCodigo: l.codigo_lote || '',
+        produtor: l.fazenda || '',
+        variedade: l.variedade || '',
+      }),
+    )
+  }
+
+  // Café torrado a granel
+  const torr = await resumoTorrado()
+  if ((Number(torr.saldoAtual) || 0) > 0) {
+    itens.push(
+      calcularItem({
+        categoria: CATEGORIAS.TORRADO,
+        referencia: 'Café torrado',
+        descricao: 'Café torrado a granel',
+        unidade: 'kg',
+        saldoSistema: Number(torr.saldoAtual) || 0,
+        saldoFisico: null,
+        regularizado: false,
+        regularizacao: null,
+      }),
+    )
+  }
+
+  // Produtos embalados (por produto + gramatura)
+  const pa = await resumoPAEstoque()
+  for (const r of pa) {
+    if ((Number(r.quantidade) || 0) <= 0) continue
+    itens.push(
+      calcularItem({
+        categoria: CATEGORIAS.EMBALADO,
+        referencia: `${r.paNome} ${formatarGramatura(r.gramatura)}`,
+        descricao: `${r.paNome} — ${formatarGramatura(r.gramatura)}`,
+        unidade: 'un',
+        saldoSistema: Number(r.quantidade) || 0,
+        saldoFisico: null,
+        regularizado: false,
+        regularizacao: null,
+        paId: r.paId,
+        gramatura: r.gramatura,
+        paNome: r.paNome,
+      }),
+    )
+  }
+
+  // Insumos
+  const insumos = await sql`SELECT * FROM insumos_cadastro ORDER BY id ASC`
+  const resumoIns = await resumoPorInsumo()
+  for (const i of insumos) {
+    const saldo = Number(resumoIns[i.id]?.saldoAtual) || 0
+    if (saldo <= 0) continue
+    itens.push(
+      calcularItem({
+        categoria: CATEGORIAS.INSUMO,
+        referencia: i.nome,
+        descricao: i.nome,
+        unidade: i.unidade || 'un',
+        saldoSistema: saldo,
+        saldoFisico: null,
+        regularizado: false,
+        regularizacao: null,
+        insumoId: i.id,
+      }),
+    )
+  }
+
+  return itens
+}
+
+export function resumoInventario(inv) {
+  let ok = 0
+  let sobras = 0
+  let faltas = 0
+  let pendentes = 0
+  for (const it of inv.itens || []) {
+    if (it.status === 'ok') ok++
+    else {
+      if (it.status === 'sobra') sobras++
+      if (it.status === 'falta') faltas++
+      if (!it.regularizado) pendentes++
+    }
+  }
+  return {
+    ok,
+    sobras,
+    faltas,
+    comDiferenca: sobras + faltas,
+    pendentes,
+    total: (inv.itens || []).length,
+    tudoRegularizado: pendentes === 0,
+  }
+}
