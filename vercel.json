@@ -1,6 +1,9 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/setup.js": { "includeFiles": "api/schema.sql" }
+  },
   "rewrites": [
     { "source": "/bling/callback", "destination": "/api/bling/callback" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
