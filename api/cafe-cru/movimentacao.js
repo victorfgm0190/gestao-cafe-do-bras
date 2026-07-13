@@ -26,11 +26,10 @@ export default async function handler(req, res) {
       return enviarErro(res, 400, `tipo inválido. Use um de: ${Object.values(TIPOS_MOV).join(', ')}.`)
     }
 
+    // produtor/variedade são opcionais: o modal manual do Kardex registra
+    // saída/perda/ajuste sem grupo (grupo vazio "|", valorizado a custo médio 0).
     const produtor = String(b.produtor || '').trim()
     const variedade = String(b.variedade || '').trim()
-    if (!produtor || !variedade) {
-      return enviarErro(res, 400, 'produtor e variedade são obrigatórios (definem o grupo de custeio).')
-    }
 
     const delta = calcularDelta(tipo, b.quantidade, b.sentido)
     if (delta === 0) {

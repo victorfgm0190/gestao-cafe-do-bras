@@ -5,6 +5,7 @@
 
 import { hojeISO } from './formato'
 import { registrarMovimentacao, TIPOS_MOV } from './kardex'
+import { atualizarSaldoLote } from './lotesCru'
 import { registrarMovimentacaoTorrado, carregarEstoqueTorrado } from './torrado'
 import {
   carregarCadastro as carregarInsumos,
@@ -14,7 +15,6 @@ import {
 import { lotesCruDisponiveis, resumoPAEstoque, ajustarEstoquePA, formatarGramatura } from './pa'
 
 const CHAVE = 'inventarios'
-const CHAVE_LOTES_CRU = 'cafe_do_bras_estoque'
 
 export const TIPOS_INVENTARIO = ['Diário', 'Semanal', 'Mensal']
 
@@ -79,11 +79,11 @@ function calcularItem(base) {
 }
 
 // Monta os itens a partir dos saldos atuais do sistema.
-export function gerarItensSistema() {
+export async function gerarItensSistema() {
   const itens = []
 
   // Café cru (por lote)
-  for (const l of lotesCruDisponiveis()) {
+  for (const l of await lotesCruDisponiveis()) {
     itens.push(
       calcularItem({
         categoria: CATEGORIAS.CRU,
@@ -165,7 +165,7 @@ export function gerarItensSistema() {
 }
 
 // Cria um novo inventário (rascunho, não persistido ainda).
-export function novoInventario(tipo, criadoPor) {
+export async function novoInventario(tipo, criadoPor) {
   return {
     id: proximoId(),
     data: hojeISO(),
@@ -173,7 +173,7 @@ export function novoInventario(tipo, criadoPor) {
     status: 'Rascunho',
     criadoPor: criadoPor || 'sistema',
     concluidoEm: null,
-    itens: gerarItensSistema(),
+    itens: await gerarItensSistema(),
   }
 }
 
@@ -201,29 +201,14 @@ export function resumoInventario(inv) {
 }
 
 // ---------- Regularização ----------
-function ajustarLoteCru(loteId, saldoFisico) {
-  try {
-    const bruto = localStorage.getItem(CHAVE_LOTES_CRU)
-    const lotes = bruto ? JSON.parse(bruto) : []
-    if (!Array.isArray(lotes)) return
-    const atual = lotes.map((l) =>
-      l.id === Number(loteId)
-        ? {
-            ...l,
-            saldoDisponivel: Math.max(0, Number(saldoFisico) || 0),
-            status: (Number(saldoFisico) || 0) > 0 ? 'disponivel' : 'esgotado',
-          }
-        : l,
-    )
-    localStorage.setItem(CHAVE_LOTES_CRU, JSON.stringify(atual))
-  } catch {
-    /* ignora */
-  }
+async function ajustarLoteCru(loteId, saldoFisico) {
+  const saldo = Math.max(0, Number(saldoFisico) || 0)
+  await atualizarSaldoLote(loteId, saldo, saldo > 0 ? 'disponivel' : 'esgotado')
 }
 
 // Regulariza um item (índice) de um inventário e persiste o inventário.
 // opcoes: { descricao?, quantidade? } (quantidade padrão = |diferença|)
-export function regularizarItem(invId, index, opcoes = {}) {
+export async function regularizarItem(invId, index, opcoes = {}) {
   const inv = carregarInventario(invId)
   if (!inv) return null
   const item = inv.itens[index]
@@ -245,8 +230,8 @@ export function regularizarItem(invId, index, opcoes = {}) {
 
   // Aplica no kardex correspondente
   if (item.categoria === CATEGORIAS.CRU) {
-    ajustarLoteCru(item.loteId, item.saldoFisico)
-    registrarMovimentacao({
+    await ajustarLoteCru(item.loteId, item.saldoFisico)
+    await registrarMovimentacao({
       tipo: TIPOS_MOV.AJUSTE,
       sentido,
       data: dataRef,

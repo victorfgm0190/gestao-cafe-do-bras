@@ -1,21 +1,11 @@
-// Kardex do café cru com custo médio ponderado ISOLADO por fazenda (produtor) + variedade.
+// Kardex do café cru — agora consumido da API REST (PostgreSQL) via api/cafe-cru.
 //
-// Regra de custeio: o custo médio só agrega lotes do mesmo grupo (produtor + variedade).
-// Cafés diferentes têm custos separados — nunca misturados.
-//
-// Estruturas no localStorage:
-//   kardex_cafe_cru  → array de movimentações
-//     { id, data, tipo, descricao, produtor, variedade, grupo, quantidade,
-//       custoUnitario, custoTotal, saldoAcumulado, custoMedio }
-//     obs.: `quantidade` é o efeito no saldo (positivo = entra, negativo = sai);
-//           `saldoAcumulado`/`custoMedio` são corridos DENTRO do grupo.
-//   estoque_cafe_cru → { saldoAtual, custoMedio, ultimaAtualizacao } (total geral, p/ dashboard)
+// As funções mantêm os MESMOS NOMES da versão localStorage, mas passaram a ser
+// ASSÍNCRONAS (retornam Promise). A regra de custeio — custo médio ponderado
+// ISOLADO por grupo (fazenda + variedade), saldo acumulado corrido e código de
+// lote automático — vive no backend.
 
-import { hojeISO } from './formato'
-
-export const CHAVE_KARDEX = 'kardex_cafe_cru'
-export const CHAVE_ESTOQUE = 'estoque_cafe_cru'
-const CHAVE_LOTES = 'cafe_do_bras_estoque' // fonte para a semeadura inicial
+import { getJson, sendJson } from './api'
 
 export const TIPOS_MOV = {
   ENTRADA: 'Entrada',
@@ -36,307 +26,105 @@ export function chaveGrupo(produtor, variedade) {
   return `${(produtor || '').trim()}|${(variedade || '').trim()}`
 }
 
-function agoraTexto() {
-  const d = new Date()
-  const p = (n) => String(n).padStart(2, '0')
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
-}
+// ---------- helpers ----------
+const n = (v) => Number(v) || 0
 
-// ---------- Persistência ----------
-export function carregarKardex() {
-  try {
-    const bruto = localStorage.getItem(CHAVE_KARDEX)
-    const dado = bruto ? JSON.parse(bruto) : []
-    return Array.isArray(dado) ? dado : []
-  } catch {
-    return []
+// snake_case (API) → camelCase (esperado pelo app)
+function mapMov(r) {
+  if (!r) return null
+  return {
+    id: r.id,
+    data: typeof r.data === 'string' ? r.data.slice(0, 10) : r.data,
+    tipo: r.tipo,
+    descricao: r.descricao || '',
+    produtor: r.produtor || '',
+    variedade: r.variedade || '',
+    grupo: r.grupo || '',
+    quantidade: n(r.quantidade),
+    custoUnitario: n(r.custo_unitario),
+    custoTotal: n(r.custo_total),
+    saldoAcumulado: n(r.saldo_acumulado),
+    custoMedio: n(r.custo_medio),
+    loteId: r.lote_id ?? null,
   }
 }
 
-export function salvarKardex(lista) {
-  localStorage.setItem(CHAVE_KARDEX, JSON.stringify(lista))
+// ---------- API pública (mesmos nomes; agora async) ----------
+
+// A semeadura inicial passou a acontecer no backend (criar lote cria a ENTRADA).
+// Mantida como no-op assíncrono para não quebrar chamadas existentes.
+export async function garantirKardexInicial() {}
+
+// Lista todas as movimentações do kardex do café cru (ordenadas por data, id).
+export async function carregarKardex() {
+  const data = await getJson('/api/cafe-cru/kardex')
+  return (data.movimentacoes || []).map(mapMov)
 }
 
-export function salvarEstoqueResumo(resumo) {
-  localStorage.setItem(CHAVE_ESTOQUE, JSON.stringify(resumo))
+// Resumo TOTAL do estoque (saldo e custo médio geral) — usado no dashboard/kardex.
+export async function carregarEstoqueResumo() {
+  const data = await getJson('/api/cafe-cru/resumo')
+  return { ...data.total, ultimaAtualizacao: null }
 }
 
-function carregarLotes() {
-  try {
-    const bruto = localStorage.getItem(CHAVE_LOTES)
-    const dado = bruto ? JSON.parse(bruto) : []
-    return Array.isArray(dado) ? dado : []
-  } catch {
-    return []
-  }
-}
-
-// ---------- Núcleo do cálculo ----------
-function ordenar(a, b) {
-  return (a.data || '').localeCompare(b.data || '') || (a.id || 0) - (b.id || 0)
-}
-
-function grupoDe(m) {
-  return m.grupo || chaveGrupo(m.produtor, m.variedade)
-}
-
-// Reprocessa o kardex agrupando por (produtor + variedade). Muta os registros
-// (saldoAcumulado/custoMedio/custoTotal corridos DENTRO do grupo) e devolve o mapa
-// grupo → { chave, produtor, variedade, saldoAtual, custoMedio, valorTotal }.
-function recalcular(movs) {
-  const grupos = {}
-  for (const m of movs) {
-    const chave = grupoDe(m)
-    ;(grupos[chave] = grupos[chave] || []).push(m)
-  }
-  const resumo = {}
-  for (const chave of Object.keys(grupos)) {
-    let saldo = 0
-    let custoMedio = 0
-    for (const m of grupos[chave].sort(ordenar)) {
-      const q = Number(m.quantidade) || 0
-      const custoEntrada = Number(m.custoUnitario) || 0
-      if (q > 0 && custoEntrada > 0) {
-        const novoSaldo = saldo + q
-        custoMedio = novoSaldo > 0 ? (saldo * custoMedio + q * custoEntrada) / novoSaldo : 0
-        saldo = novoSaldo
-        m.custoUnitario = custoEntrada
-      } else {
-        // Saída / perda / ajuste: o saldo diminui e o custo médio do grupo NÃO muda.
-        // A saída é sempre valorizada pelo custo médio ponderado VIGENTE do grupo.
-        saldo = saldo + q
-        m.custoUnitario = custoMedio
-      }
-      m.saldoAcumulado = saldo
-      m.custoMedio = custoMedio
-      m.custoTotal = Math.abs(q) * m.custoUnitario
-    }
-    const rep = grupos[chave].find((x) => x.produtor || x.variedade) || {}
-    resumo[chave] = {
-      chave,
-      produtor: rep.produtor || '',
-      variedade: rep.variedade || '',
-      saldoAtual: saldo,
-      custoMedio,
-      valorTotal: saldo * custoMedio,
-    }
-  }
-  return resumo
-}
-
-// Totais gerais a partir do mapa por grupo.
-function totaisDe(resumoGrupos) {
-  let saldo = 0
-  let valor = 0
-  for (const g of Object.values(resumoGrupos)) {
-    saldo += g.saldoAtual
-    valor += g.valorTotal
-  }
-  return { saldoAtual: saldo, custoMedio: saldo > 0 ? valor / saldo : 0 }
-}
-
-// Semeia o kardex a partir dos lotes já cadastrados (uma única vez), um registro por lote
-// já vinculado ao seu grupo (produtor + variedade).
-export function garantirKardexInicial() {
-  if (localStorage.getItem(CHAVE_KARDEX) !== null) return
-  const lotes = carregarLotes()
-  if (!lotes.length) return
-
-  const movs = [...lotes]
-    .sort((a, b) => (a.recebimento || '').localeCompare(b.recebimento || '') || a.id - b.id)
-    .map((l, i) => ({
-      id: i + 1,
-      data: l.recebimento,
-      tipo: TIPOS_MOV.ENTRADA,
-      descricao: `${l.codigo || 'Lote'} — ${l.produtor || ''}`.trim(),
-      produtor: l.produtor || '',
-      variedade: l.variedade || '',
-      grupo: chaveGrupo(l.produtor, l.variedade),
-      quantidade: Number(l.pesoTotal) || 0,
-      custoUnitario: Number(l.custoPorKg) || 0,
-      custoTotal: 0,
-      saldoAcumulado: 0,
-      custoMedio: 0,
-    }))
-
-  const resumoGrupos = recalcular(movs)
-  salvarKardex(movs)
-  salvarEstoqueResumo({ ...totaisDe(resumoGrupos), ultimaAtualizacao: agoraTexto() })
-}
-
-// Resumo TOTAL do estoque (saldo e custo médio geral) — usado no dashboard.
-export function carregarEstoqueResumo() {
-  try {
-    const bruto = localStorage.getItem(CHAVE_ESTOQUE)
-    if (bruto) return JSON.parse(bruto)
-  } catch {
-    /* ignora e deriva abaixo */
-  }
-  return { ...totaisDe(recalcular(carregarKardex())), ultimaAtualizacao: null }
+// Resumo por grupo (fazenda + variedade), já filtrado e ordenado.
+export async function carregarEstoqueResumoPorGrupo() {
+  const data = await getJson('/api/cafe-cru/resumo')
+  return data.grupos || []
 }
 
 // Custo médio ponderado ATUAL de um grupo (fazenda + variedade).
-// Usado pelas saídas (produção/torra) para valorizar o café cru consumido.
-export function custoMedioGrupo(produtor, variedade) {
-  garantirKardexInicial()
-  const resumo = recalcular(carregarKardex())
-  return Number(resumo[chaveGrupo(produtor, variedade)]?.custoMedio) || 0
+export async function custoMedioGrupo(produtor, variedade) {
+  const chave = chaveGrupo(produtor, variedade)
+  const data = await getJson('/api/cafe-cru/resumo')
+  const g = (data.grupos || []).find((x) => x.chave === chave)
+  return Number(g?.custoMedio) || 0
 }
 
-// Resumo por grupo (fazenda + variedade).
-export function carregarEstoqueResumoPorGrupo() {
-  const resumo = recalcular(carregarKardex())
-  return Object.values(resumo)
-    .filter((g) => g.saldoAtual > 1e-9 || g.valorTotal > 1e-9)
-    .sort((a, b) => (a.produtor || '').localeCompare(b.produtor || '') || (a.variedade || '').localeCompare(b.variedade || ''))
-}
-
-// Registra uma movimentação e reprocessa o kardex + o resumo.
-// input: { tipo, descricao, quantidade, custoUnitario, data, sentido, produtor, variedade }
-export function registrarMovimentacao(input) {
-  garantirKardexInicial()
-  const movs = carregarKardex()
-  const proximoId = movs.reduce((max, m) => Math.max(max, m.id || 0), 0) + 1
-
-  const q = Math.abs(Number(String(input.quantidade).replace(',', '.'))) || 0
-  let delta = q // ENTRADA
-  if (input.tipo === TIPOS_MOV.SAIDA || input.tipo === TIPOS_MOV.PERDA) {
-    delta = -q
-  } else if (input.tipo === TIPOS_MOV.AJUSTE) {
-    delta = input.sentido === 'positivo' ? q : -q
-  }
-  // Entradas usam o custo de compra informado; saídas são valorizadas pelo custo médio
-  // vigente do grupo (preenchido no recálculo, não no valor informado).
-  const custoInformado = delta > 0 ? Number(String(input.custoUnitario).replace(',', '.')) || 0 : 0
-
-  const registro = {
-    id: proximoId,
-    data: input.data || hojeISO(),
+// Registra uma movimentação (entrada avulsa/saída/perda/ajuste) e reprocessa o grupo.
+// input: { tipo, descricao, quantidade, custoUnitario, data, sentido, produtor, variedade, loteId }
+export async function registrarMovimentacao(input) {
+  const data = await sendJson('/api/cafe-cru/movimentacao', 'POST', {
     tipo: input.tipo,
     descricao: input.descricao || '',
-    produtor: input.produtor || '',
-    variedade: input.variedade || '',
-    grupo: chaveGrupo(input.produtor, input.variedade),
-    quantidade: delta,
-    custoUnitario: custoInformado,
-    custoTotal: 0,
-    saldoAcumulado: 0,
-    custoMedio: 0,
-  }
-
-  const todos = [...movs, registro].sort(ordenar)
-  const resumoGrupos = recalcular(todos)
-  salvarKardex(todos)
-  salvarEstoqueResumo({ ...totaisDe(resumoGrupos), ultimaAtualizacao: agoraTexto() })
-  return registro
+    quantidade: input.quantidade,
+    custoUnitario: input.custoUnitario,
+    data: input.data,
+    sentido: input.sentido,
+    produtor: input.produtor,
+    variedade: input.variedade,
+    lote_id: input.loteId ?? input.lote_id ?? null,
+  })
+  return mapMov(data.movimentacao)
 }
 
-// Remove uma movimentação pelo id e reprocessa o kardex + o resumo.
-export function removerMovimentacao(id) {
-  const movs = carregarKardex().filter((m) => m.id !== Number(id))
-  const resumoGrupos = recalcular(movs)
-  salvarKardex(movs)
-  salvarEstoqueResumo({ ...totaisDe(resumoGrupos), ultimaAtualizacao: agoraTexto() })
+// Remove uma movimentação pelo id e reprocessa o grupo.
+export async function removerMovimentacao(id) {
+  await sendJson(`/api/cafe-cru/movimentacao/${id}`, 'DELETE')
 }
 
-// Localiza a movimentação de ENTRADA correspondente a um lote (pelo código no início da descrição).
-export function acharEntradaPorCodigo(codigo) {
+// Edita uma ENTRADA e dispara o recálculo em cascata do grupo.
+// Retorna o relatório de impacto do kardex:
+//   { custoMedioAntes, custoMedioDepois, movimentacoesAfetadas, resumo, entrada }
+export async function editarEntrada(id, campos = {}) {
+  return sendJson(`/api/cafe-cru/movimentacao/${id}`, 'PUT', {
+    quantidade: campos.quantidade,
+    custoUnitario: campos.custoUnitario,
+    data: campos.data,
+    descricao: campos.descricao,
+    produtor: campos.produtor,
+    variedade: campos.variedade,
+  })
+}
+
+// Localiza a movimentação de ENTRADA correspondente a um lote (código no início da descrição).
+export async function acharEntradaPorCodigo(codigo) {
   if (!codigo) return null
   const alvo = String(codigo)
+  const movs = await carregarKardex()
   return (
-    carregarKardex().find(
+    movs.find(
       (m) => m.tipo === TIPOS_MOV.ENTRADA && String(m.descricao || '').startsWith(alvo),
     ) || null
   )
-}
-
-// Fotografa o estado atual do ledger (por id + resumo por grupo) para servir de "antes".
-function snapshotDe(movs) {
-  const porId = {}
-  for (const m of movs) {
-    porId[m.id] = {
-      custoTotal: Number(m.custoTotal) || 0,
-      custoUnitario: Number(m.custoUnitario) || 0,
-      custoMedio: Number(m.custoMedio) || 0,
-    }
-  }
-  // resumo em cima de um clone (não muta os registros reais)
-  const resumo = recalcular(movs.map((m) => ({ ...m })))
-  return { porId, resumo }
-}
-
-// Reprocessa TODO o ledger em ordem cronológica (o recálculo é sempre do zero, por grupo)
-// e devolve um relatório do impacto no grupo informado, comparando com o snapshot "antes".
-export function reprocessarLedgerGrupo(produtor, variedade, snapshotAntes) {
-  const movs = carregarKardex()
-  const antes = snapshotAntes || snapshotDe(movs)
-
-  const resumoDepois = recalcular(movs)
-  salvarKardex(movs)
-  salvarEstoqueResumo({ ...totaisDe(resumoDepois), ultimaAtualizacao: agoraTexto() })
-
-  const chave = chaveGrupo(produtor, variedade)
-  const movimentacoesAfetadas = []
-  for (const m of movs) {
-    const a = antes.porId[m.id]
-    if (!a) continue
-    // Entradas não entram no impacto de "saídas"; interessa o que foi revalorizado.
-    if (m.tipo === TIPOS_MOV.ENTRADA) continue
-    const depoisTotal = Number(m.custoTotal) || 0
-    if (Math.abs(depoisTotal - a.custoTotal) > 1e-6) {
-      movimentacoesAfetadas.push({
-        id: m.id,
-        data: m.data,
-        tipo: m.tipo,
-        descricao: m.descricao,
-        custoTotalAntes: a.custoTotal,
-        custoTotalDepois: depoisTotal,
-      })
-    }
-  }
-
-  return {
-    custoMedioAntes: Number(antes.resumo[chave]?.custoMedio) || 0,
-    custoMedioDepois: Number(resumoDepois[chave]?.custoMedio) || 0,
-    movimentacoesAfetadas,
-    resumo: `${movimentacoesAfetadas.length} movimentação(ões) recalculada(s)`,
-  }
-}
-
-// Edita uma movimentação de ENTRADA e dispara o recálculo em cascata do grupo.
-// campos: { quantidade, custoUnitario, data, descricao, produtor, variedade }
-// Retorna o relatório de impacto (kardex).
-export function editarEntrada(id, campos = {}) {
-  const pre = carregarKardex()
-  const alvo0 = pre.find((m) => m.id === Number(id))
-  if (!alvo0) throw new Error('Entrada não encontrada no kardex.')
-  if (alvo0.tipo !== TIPOS_MOV.ENTRADA) throw new Error('A movimentação não é uma entrada.')
-
-  const snapshotAntes = snapshotDe(pre)
-  const custoAntes = Number(alvo0.custoUnitario) || 0
-
-  // Aplica a edição (ainda sem recalcular) e salva.
-  const movs = carregarKardex()
-  const alvo = movs.find((m) => m.id === Number(id))
-  if (campos.quantidade !== undefined)
-    alvo.quantidade = Math.abs(Number(String(campos.quantidade).replace(',', '.'))) || 0
-  if (campos.custoUnitario !== undefined)
-    alvo.custoUnitario = Number(String(campos.custoUnitario).replace(',', '.')) || 0
-  if (campos.data) alvo.data = campos.data
-  if (campos.descricao !== undefined) alvo.descricao = campos.descricao
-  if (campos.produtor !== undefined) alvo.produtor = campos.produtor
-  if (campos.variedade !== undefined) alvo.variedade = campos.variedade
-  alvo.grupo = chaveGrupo(alvo.produtor, alvo.variedade)
-  salvarKardex(movs)
-
-  const rel = reprocessarLedgerGrupo(alvo.produtor, alvo.variedade, snapshotAntes)
-  rel.entrada = {
-    produtor: alvo.produtor || '',
-    variedade: alvo.variedade || '',
-    grupo: alvo.grupo,
-    quantidade: Math.abs(Number(alvo.quantidade)) || 0,
-    custoAntes,
-    custoDepois: Number(alvo.custoUnitario) || 0,
-  }
-  return rel
 }

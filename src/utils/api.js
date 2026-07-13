@@ -10,3 +10,23 @@ const API_BASE =
 export function apiUrl(caminho) {
   return `${API_BASE}${caminho}`
 }
+
+// GET JSON de um endpoint da API (lança em erro HTTP).
+export async function getJson(caminho) {
+  const res = await fetch(apiUrl(caminho))
+  if (!res.ok) throw new Error(`GET ${caminho} → HTTP ${res.status}`)
+  return res.json()
+}
+
+// Envia JSON (POST/PUT/DELETE) e devolve o corpo. Lança com a mensagem de erro
+// do backend ({ error }) em falha HTTP.
+export async function sendJson(caminho, method, body) {
+  const res = await fetch(apiUrl(caminho), {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data?.error || `${method} ${caminho} → HTTP ${res.status}`)
+  return data
+}

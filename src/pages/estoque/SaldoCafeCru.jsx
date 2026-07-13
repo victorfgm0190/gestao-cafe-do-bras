@@ -1,21 +1,28 @@
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../components/Topbar'
 import AbasCafeCru from './AbasCafeCru'
 import { formatarMoeda, formatarKg } from '../../utils/formato'
-import {
-  carregarEstoqueResumo,
-  carregarEstoqueResumoPorGrupo,
-  garantirKardexInicial,
-} from '../../utils/kardex'
+import { carregarEstoqueResumo, carregarEstoqueResumoPorGrupo } from '../../utils/kardex'
 import './CafeCru.css'
 
-// Garante o resumo na primeira visita (semeia do estoque de lotes).
-garantirKardexInicial()
-
 export default function SaldoCafeCru() {
-  const total = useMemo(() => carregarEstoqueResumo(), [])
-  const grupos = useMemo(() => carregarEstoqueResumoPorGrupo(), [])
+  const [total, setTotal] = useState({ saldoAtual: 0, custoMedio: 0, ultimaAtualizacao: null })
+  const [grupos, setGrupos] = useState([])
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const [t, g] = await Promise.all([carregarEstoqueResumo(), carregarEstoqueResumoPorGrupo()])
+      if (vivo) {
+        setTotal(t)
+        setGrupos(g)
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   const saldo = Number(total.saldoAtual) || 0
   const custoMedio = Number(total.custoMedio) || 0

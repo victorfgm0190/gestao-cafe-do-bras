@@ -22,6 +22,12 @@ import {
   chaveGrupo,
   custoMedioGrupo,
 } from './kardex'
+import {
+  carregarLotesCru,
+  loteCruPorId,
+  lotesCruDisponiveis,
+  atualizarSaldoLote,
+} from './lotesCru'
 import { registrarMovimentacaoTorrado, removerMovimentacaoTorrado } from './torrado'
 import {
   carregarCadastro as carregarInsumos,
@@ -30,11 +36,13 @@ import {
   resumoPorInsumo,
 } from './insumos'
 
+// Re-exporta para as telas que importam de pa.js (OrdemProducao, Dashboard).
+export { lotesCruDisponiveis, loteCruPorId }
+
 const CHAVE_PA = 'pa_cadastro'
 const CHAVE_PA_ESTOQUE = 'pa_estoque'
 const CHAVE_PA_MOV = 'pa_movimentacoes'
 const CHAVE_ORDENS = 'ordens_producao'
-const CHAVE_LOTES_CRU = 'cafe_do_bras_estoque'
 
 export const GRAMATURAS = [200, 250, 1000]
 
@@ -96,24 +104,8 @@ export function embalagemDoPA(pa, gramatura) {
   return null // 200g não tem embalagem vinculada por padrão
 }
 
-// ---------- Lotes de café cru ----------
-function carregarLotesCru() {
-  try {
-    const bruto = localStorage.getItem(CHAVE_LOTES_CRU)
-    const dado = bruto ? JSON.parse(bruto) : []
-    return Array.isArray(dado) ? dado : []
-  } catch {
-    return []
-  }
-}
-
-function salvarLotesCru(lista) {
-  localStorage.setItem(CHAVE_LOTES_CRU, JSON.stringify(lista))
-}
-
-export function lotesCruDisponiveis() {
-  return carregarLotesCru().filter((l) => (Number(l.saldoDisponivel) || 0) > 0)
-}
+// Lotes de café cru → agora vêm da API (ver ./lotesCru). As funções
+// carregarLotesCru/loteCruPorId/lotesCruDisponiveis/atualizarSaldoLote são async.
 
 // ---------- PA estoque / movimentações / ordens ----------
 export function carregarPAEstoque() {
@@ -157,32 +149,35 @@ function salvarOrdens(lista) {
 
 // Calcula os números de uma ordem sem persistir (prévia na tela).
 // input: { paId, itens:[{gramatura, quantidade}], lotes:[{loteId, kg}], sobra }
-export function calcularOrdem(input) {
+export async function calcularOrdem(input) {
   const pa = carregarPA().find((p) => p.id === Number(input.paId)) || null
   const sobra = Number(String(input.sobra).replace(',', '.')) || 0
 
   // Lotes usados (com custo do próprio lote)
-  const lotesCru = carregarLotesCru()
-  const lotes = (input.lotes || [])
-    .map((li) => {
-      const lote = lotesCru.find((l) => l.id === Number(li.loteId))
-      const kg = Number(String(li.kg).replace(',', '.')) || 0
-      if (!lote || kg <= 0) return null
-      // Custo médio ponderado ATUAL do grupo (fazenda + variedade) do lote —
-      // não o custoPorKg fixo do lote.
-      const custoPorKg = custoMedioGrupo(lote.produtor, lote.variedade) || Number(lote.custoPorKg) || 0
-      return {
-        loteId: lote.id,
-        loteCodigo: lote.codigo || '',
-        produtor: lote.produtor || '',
-        variedade: lote.variedade || '',
-        saldoDisponivel: Number(lote.saldoDisponivel) || 0,
-        kg,
-        custoPorKg,
-        custoTotalLote: kg * custoPorKg,
-      }
-    })
-    .filter(Boolean)
+  const lotesCru = await carregarLotesCru()
+  const lotes = (
+    await Promise.all(
+      (input.lotes || []).map(async (li) => {
+        const lote = lotesCru.find((l) => l.id === Number(li.loteId))
+        const kg = Number(String(li.kg).replace(',', '.')) || 0
+        if (!lote || kg <= 0) return null
+        // Custo médio ponderado ATUAL do grupo (fazenda + variedade) do lote —
+        // não o custoPorKg fixo do lote.
+        const custoPorKg =
+          (await custoMedioGrupo(lote.produtor, lote.variedade)) || Number(lote.custoPorKg) || 0
+        return {
+          loteId: lote.id,
+          loteCodigo: lote.codigo || '',
+          produtor: lote.produtor || '',
+          variedade: lote.variedade || '',
+          saldoDisponivel: Number(lote.saldoDisponivel) || 0,
+          kg,
+          custoPorKg,
+          custoTotalLote: kg * custoPorKg,
+        }
+      }),
+    )
+  ).filter(Boolean)
 
   const totalCru = lotes.reduce((s, l) => s + l.kg, 0)
   const custoTotalCru = lotes.reduce((s, l) => s + l.custoTotalLote, 0)
@@ -244,25 +239,19 @@ export function calcularOrdem(input) {
 
 // Registra a ordem: baixa cru, gera sobra (custo zero), baixa embalagens por gramatura
 // e produz os pacotes de PA.
-export function registrarOrdem(input) {
+export async function registrarOrdem(input) {
   const data = input.data || hojeISO()
-  const calc = calcularOrdem(input)
+  const calc = await calcularOrdem(input)
   const { pa, lotes, sobra, itens } = calc
 
   const descBase = `Produção ${data} — ${pa?.nome || 'PA'}`
 
   // (a) baixa cada lote de café cru + saída no kardex do cru (custo e grupo do lote)
-  const lotesCru = carregarLotesCru()
-  let lotesAtual = lotesCru
-  const lotesUsados = lotes.map((l) => {
-    const alvo = lotesAtual.find((x) => x.id === l.loteId)
-    const novoSaldo = Math.max(0, (Number(alvo?.saldoDisponivel) || 0) - l.kg)
-    lotesAtual = lotesAtual.map((x) =>
-      x.id === l.loteId
-        ? { ...x, saldoDisponivel: novoSaldo, status: novoSaldo > 0 ? 'disponivel' : 'esgotado' }
-        : x,
-    )
-    const mov = registrarMovCru({
+  const lotesUsados = []
+  for (const l of lotes) {
+    const novoSaldo = Math.max(0, (Number(l.saldoDisponivel) || 0) - l.kg)
+    await atualizarSaldoLote(l.loteId, novoSaldo)
+    const mov = await registrarMovCru({
       tipo: TIPOS_MOV.SAIDA,
       data,
       descricao: descBase,
@@ -271,9 +260,8 @@ export function registrarOrdem(input) {
       quantidade: l.kg,
       custoUnitario: l.custoPorKg,
     })
-    return { ...l, movCruId: mov?.id ?? null }
-  })
-  salvarLotesCru(lotesAtual)
+    lotesUsados.push({ ...l, movCruId: mov?.id ?? null })
+  }
 
   // (b) sobra torrada → entrada no kardex do torrado com custo ZERO
   let movTorradoId = null
@@ -382,27 +370,20 @@ export function registrarOrdem(input) {
 }
 
 // Estorna uma ordem: devolve cru aos lotes, remove sobra, devolve embalagens e apaga PA.
-export function estornarOrdem(ordemId) {
+export async function estornarOrdem(ordemId) {
   const ordens = carregarOrdens()
   const ordem = ordens.find((o) => o.id === Number(ordemId))
   if (!ordem) return null
 
   // (a) devolve cru aos lotes + remove as saídas do kardex do cru
-  const lotesCru = carregarLotesCru()
-  let lotesAtual = lotesCru
   for (const l of ordem.lotes || []) {
-    const alvo = lotesAtual.find((x) => x.id === Number(l.loteId))
+    const alvo = await loteCruPorId(Number(l.loteId))
     if (alvo) {
       const novoSaldo = (Number(alvo.saldoDisponivel) || 0) + (Number(l.kg) || 0)
-      lotesAtual = lotesAtual.map((x) =>
-        x.id === alvo.id
-          ? { ...x, saldoDisponivel: novoSaldo, status: novoSaldo > 0 ? 'disponivel' : 'esgotado' }
-          : x,
-      )
+      await atualizarSaldoLote(alvo.id, novoSaldo)
     }
-    if (l.movCruId != null) removerMovCru(l.movCruId)
+    if (l.movCruId != null) await removerMovCru(l.movCruId)
   }
-  salvarLotesCru(lotesAtual)
 
   // (b) remove a sobra torrada
   if (ordem.movTorradoId != null) removerMovimentacaoTorrado(ordem.movTorradoId)
@@ -438,7 +419,7 @@ export function ordensDoGrupo(produtor, variedade) {
 // Recalcula os custos de uma ordem de produção após o recálculo em cascata do café cru.
 // O novo custo do café de cada lote vem da saída correspondente no kardex do cru (movCruId).
 // Atualiza ordens_producao, pa_estoque e pa_movimentacoes. Retorna { antes, depois } por gramatura.
-export function recalcularOrdemProducao(ordemId) {
+export async function recalcularOrdemProducao(ordemId) {
   const ordens = carregarOrdens()
   const idx = ordens.findIndex((o) => o.id === Number(ordemId))
   if (idx < 0) return null
@@ -446,7 +427,7 @@ export function recalcularOrdemProducao(ordemId) {
   if (!Array.isArray(ordem.itens) || !Array.isArray(ordem.lotes)) return null // legado sem estrutura
 
   // Novo custo do café por lote = custoUnitario atual da saída no kardex do cru.
-  const kardex = carregarKardexCru()
+  const kardex = await carregarKardexCru()
   const movPorId = {}
   for (const m of kardex) movPorId[m.id] = m
 

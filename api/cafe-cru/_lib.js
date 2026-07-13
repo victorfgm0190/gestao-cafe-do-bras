@@ -74,6 +74,33 @@ export async function recalcularGrupo(grupo) {
   return { saldoAtual: saldo, custoMedio }
 }
 
+// Custo médio ponderado ATUAL de um grupo (custo_medio da última movimentação
+// por data/id). Devolve 0 se o grupo não tem movimentações.
+export async function custoMedioAtualGrupo(grupo) {
+  const linhas = await sql`
+    SELECT custo_medio FROM kardex_cafe_cru
+     WHERE grupo = ${grupo}
+     ORDER BY data DESC, id DESC
+     LIMIT 1
+  `
+  return Number(linhas[0]?.custo_medio) || 0
+}
+
+// Snapshot { id → custo_total } das movimentações de um conjunto de grupos,
+// para comparar o impacto (antes/depois) de uma edição em cascata.
+export async function snapshotCustos(grupos) {
+  const lista = [...new Set(grupos.filter(Boolean))]
+  if (!lista.length) return {}
+  const linhas = await sql`
+    SELECT id, tipo, data, descricao, custo_total
+      FROM kardex_cafe_cru
+     WHERE grupo = ANY(${lista})
+  `
+  const mapa = {}
+  for (const l of linhas) mapa[l.id] = l
+  return mapa
+}
+
 // Gera o próximo código de lote no formato LC-AAAA-NNN, sequencial POR ANO.
 export async function proximoCodigoLote(dataEntrada) {
   const ano = String(dataEntrada || '').slice(0, 4) || String(new Date().getFullYear())

@@ -33,13 +33,13 @@ export default function HistoricoProducao() {
     [ordens],
   )
 
-  function excluir(ordem) {
+  async function excluir(ordem) {
     if (
       window.confirm(
         'Tem certeza? Esta ação vai estornar a produção: devolve o café cru aos lotes, remove a sobra torrada, devolve as embalagens e apaga o PA produzido.',
       )
     ) {
-      estornarOrdem(ordem.id)
+      await estornarOrdem(ordem.id)
       registrarLog(
         nomeUsuarioAtual(),
         'Estoque PA',

@@ -5,96 +5,22 @@ import AbasCafeCru from './AbasCafeCru'
 import { formatarMoeda, formatarData, formatarKg, hojeISO } from '../../utils/formato'
 import { registrarLog, ACOES } from '../../utils/auditoria'
 import { nomeUsuarioAtual } from '../../utils/permissoes'
-import { registrarMovimentacao, TIPOS_MOV } from '../../utils/kardex'
-import { editarEntradaPorLote } from '../../utils/cascata'
+import {
+  carregarLotesCru,
+  criarLoteCru,
+  editarLoteCru,
+  excluirLoteCru,
+  atualizarSaldoLote,
+} from '../../utils/lotesCru'
+import { recalcularOrdensDoGrupo } from '../../utils/cascata'
 import RelatorioImpacto from '../../components/RelatorioImpacto'
 import './EntradaCafe.css'
 
-const CHAVE_STORAGE = 'cafe_do_bras_estoque'
 const KG_POR_SACA = 60
 
 const TIPOS_CAFE = ['Arábica', 'Canephora (Robusta)', 'Blend']
 const PROCESSOS = ['Natural', 'Lavado', 'Honey', 'Cereja Descascado']
 const DEPOSITOS = ['Depósito Principal']
-
-const DADOS_INICIAIS = [
-  {
-    id: 1,
-    codigo: 'LC-2026-001',
-    recebimento: '2026-01-12',
-    tipoEntrada: 'saca',
-    sacas: 2,
-    pesoTotal: 120,
-    tipoCafe: 'Arábica',
-    produtor: 'Fazenda Serra Verde',
-    cidade: 'Carmo de Minas',
-    estado: 'MG',
-    variedade: 'Bourbon',
-    processo: 'Natural',
-    safra: '2025',
-    qualidade: '84',
-    umidade: '11',
-    custoTotal: 2400,
-    custoPorKg: 20,
-    notaFiscal: '',
-    fornecedor: 'Fazenda Serra Verde',
-    deposito: 'Depósito Principal',
-    observacoes: '',
-    saldoDisponivel: 120,
-    status: 'disponivel',
-  },
-  {
-    id: 2,
-    codigo: 'LC-2026-002',
-    recebimento: '2026-02-05',
-    tipoEntrada: 'saca',
-    sacas: 1,
-    pesoTotal: 60,
-    tipoCafe: 'Canephora (Robusta)',
-    produtor: 'Sítio Boa Esperança',
-    cidade: 'Colatina',
-    estado: 'ES',
-    variedade: 'Conilon',
-    processo: 'Lavado',
-    safra: '2025',
-    qualidade: '',
-    umidade: '12',
-    custoTotal: 900,
-    custoPorKg: 15,
-    notaFiscal: '',
-    fornecedor: 'Sítio Boa Esperança',
-    deposito: 'Depósito Principal',
-    observacoes: '',
-    saldoDisponivel: 60,
-    status: 'disponivel',
-  },
-]
-
-function carregarEstoque() {
-  try {
-    const bruto = localStorage.getItem(CHAVE_STORAGE)
-    if (!bruto) return DADOS_INICIAIS
-    const dado = JSON.parse(bruto)
-    if (Array.isArray(dado)) return dado
-    return DADOS_INICIAIS
-  } catch {
-    return DADOS_INICIAIS
-  }
-}
-
-// Gera o próximo código de lote (LC-AAAA-NNN) para o ano da data informada
-function proximoCodigo(lotes, dataISO) {
-  const ano = (dataISO || hojeISO()).slice(0, 4)
-  const prefixo = `LC-${ano}-`
-  let maior = 0
-  for (const l of lotes) {
-    if (l.codigo && l.codigo.startsWith(prefixo)) {
-      const seq = parseInt(l.codigo.slice(prefixo.length), 10)
-      if (!Number.isNaN(seq) && seq > maior) maior = seq
-    }
-  }
-  return `${prefixo}${String(maior + 1).padStart(3, '0')}`
-}
 
 const FORM_VAZIO = {
   tipoEntrada: 'saca',
@@ -128,18 +54,22 @@ function calcularPeso(form) {
 }
 
 export default function EntradaCafe() {
-  const [lotes, setLotes] = useState(carregarEstoque)
+  const [lotes, setLotes] = useState([])
   const [busca, setBusca] = useState('')
   const [modalAberto, setModalAberto] = useState(false)
   const [editandoId, setEditandoId] = useState(null)
   const [form, setForm] = useState(FORM_VAZIO)
   const [erros, setErros] = useState({})
   const [relatorio, setRelatorio] = useState(null)
+  const [salvando, setSalvando] = useState(false)
 
-  // Persistência
+  // Carrega os lotes da API (fonte da verdade agora é o PostgreSQL).
+  async function recarregar() {
+    setLotes(await carregarLotesCru())
+  }
   useEffect(() => {
-    localStorage.setItem(CHAVE_STORAGE, JSON.stringify(lotes))
-  }, [lotes])
+    recarregar()
+  }, [])
 
   const lotesFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase()
@@ -236,7 +166,7 @@ export default function EntradaCafe() {
     return Object.keys(e).length === 0
   }
 
-  function salvar(e) {
+  async function salvar(e) {
     e.preventDefault()
     if (!validar()) return
 
@@ -268,84 +198,57 @@ export default function EntradaCafe() {
     }
 
     const autor = nomeUsuarioAtual()
-    if (editandoId) {
-      const loteAtual = lotes.find((l) => l.id === editandoId)
-      setLotes((lista) =>
-        lista.map((l) => {
-          if (l.id !== editandoId) return l
-          // preserva o consumo já ocorrido: saldo = peso novo - (peso antigo - saldo antigo)
-          const consumido = (Number(l.pesoTotal) || 0) - (Number(l.saldoDisponivel) || 0)
+    setSalvando(true)
+    try {
+      if (editandoId) {
+        const loteAtual = lotes.find((l) => l.id === editandoId)
+        // Edita o lote + sincroniza a ENTRADA no kardex e recalcula o grupo (backend).
+        const rel = await editarLoteCru(editandoId, dados)
+        // Preserva o consumo já ocorrido ao mudar o peso do lote.
+        if (loteAtual) {
+          const consumido = (Number(loteAtual.pesoTotal) || 0) - (Number(loteAtual.saldoDisponivel) || 0)
           const novoSaldo = Math.max(0, peso - consumido)
-          return {
-            ...l,
-            ...dados,
-            saldoDisponivel: novoSaldo,
-            status: novoSaldo > 0 ? 'disponivel' : 'esgotado',
-          }
-        }),
-      )
-      registrarLog(
-        autor,
-        'Estoque MP',
-        ACOES.ALTEROU,
-        `Editou o lote de ${dados.produtor} (${formatarKg(peso)})`,
-      )
-      // Atualiza a movimentação de entrada correspondente e reprocessa em cascata.
-      if (loteAtual?.codigo) {
-        const rel = editarEntradaPorLote(loteAtual.codigo, {
-          data: form.recebimento,
-          descricao: `${loteAtual.codigo} — ${dados.produtor}`,
-          produtor: dados.produtor,
-          variedade: dados.variedade,
-          quantidade: peso,
-          custoUnitario: custoPorKg,
-        })
-        if (rel) setRelatorio(rel)
+          await atualizarSaldoLote(editandoId, novoSaldo)
+        }
+        registrarLog(
+          autor,
+          'Estoque MP',
+          ACOES.ALTEROU,
+          `Editou o lote de ${dados.produtor} (${formatarKg(peso)})`,
+        )
+        // Recalcula em cascata as ordens de produção que consumiram esse grupo.
+        const ordens = await recalcularOrdensDoGrupo(dados.produtor, dados.variedade)
+        if (rel) setRelatorio({ ...rel, ordens })
+      } else {
+        // Cria o lote — o backend gera o código LC-AAAA-NNN e lança a ENTRADA no kardex.
+        const criado = await criarLoteCru(dados)
+        registrarLog(
+          autor,
+          'Estoque MP',
+          ACOES.INCLUIU,
+          `Registrou entrada ${criado?.codigo || ''} — ${dados.produtor} (${formatarKg(peso)})`,
+        )
       }
-    } else {
-      const novoId = lotes.reduce((max, l) => Math.max(max, l.id), 0) + 1
-      const codigo = proximoCodigo(lotes, form.recebimento)
-      setLotes((lista) => [
-        ...lista,
-        {
-          id: novoId,
-          codigo,
-          ...dados,
-          saldoDisponivel: peso,
-          status: 'disponivel',
-        },
-      ])
-      registrarLog(
-        autor,
-        'Estoque MP',
-        ACOES.INCLUIU,
-        `Registrou entrada ${codigo} — ${dados.produtor} (${formatarKg(peso)})`,
-      )
-      // Gera a movimentação de ENTRADA no kardex, vinculada ao grupo (fazenda + variedade),
-      // e recalcula o custo médio ponderado do grupo.
-      registrarMovimentacao({
-        tipo: TIPOS_MOV.ENTRADA,
-        data: form.recebimento,
-        descricao: `${codigo} — ${dados.produtor}`,
-        produtor: dados.produtor,
-        variedade: dados.variedade,
-        quantidade: peso,
-        custoUnitario: custoPorKg,
-      })
+      await recarregar()
+      setModalAberto(false)
+    } catch (err) {
+      setErros((prev) => ({ ...prev, geral: err.message || 'Falha ao salvar o lote.' }))
+    } finally {
+      setSalvando(false)
     }
-    setModalAberto(false)
   }
 
-  function excluir(id) {
+  async function excluir(id) {
     if (window.confirm('Excluir este lote de entrada? Esta ação não pode ser desfeita.')) {
       const lote = lotes.find((l) => l.id === id)
-      setLotes((lista) => lista.filter((l) => l.id !== id))
+      await excluirLoteCru(id)
       registrarLog(
         nomeUsuarioAtual(),
         'Estoque MP',
         ACOES.EXCLUIU,
         lote ? `Excluiu o lote ${lote.codigo} — ${lote.produtor}` : 'Excluiu um lote de entrada',
       )
+      await recarregar()
     }
   }
 
@@ -756,12 +659,13 @@ export default function EntradaCafe() {
                 </label>
               </div>
 
+              {erros.geral && <div className="campo-erro">{erros.geral}</div>}
               <div className="ec-form-acoes">
                 <button type="button" className="btn btn-ghost" onClick={fecharModal}>
                   Cancelar
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  {editandoId ? 'Salvar alterações' : 'Registrar entrada'}
+                <button type="submit" className="btn btn-primary" disabled={salvando}>
+                  {salvando ? 'Salvando…' : editandoId ? 'Salvar alterações' : 'Registrar entrada'}
                 </button>
               </div>
             </form>

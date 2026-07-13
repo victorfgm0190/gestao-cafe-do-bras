@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Topbar from '../../../components/Topbar'
 import AbasPA from './AbasPA'
@@ -24,7 +24,11 @@ function kg3(n) {
 export default function OrdemProducao() {
   const navigate = useNavigate()
   const [pas] = useState(() => carregarPA().filter((p) => p.ativo !== false))
-  const [lotesCru, setLotesCru] = useState(lotesCruDisponiveis)
+  const [lotesCru, setLotesCru] = useState([])
+
+  useEffect(() => {
+    ;(async () => setLotesCru(await lotesCruDisponiveis()))()
+  }, [])
 
   const [data, setData] = useState(hojeISO())
   const [paId, setPaId] = useState('')
@@ -42,10 +46,31 @@ export default function OrdemProducao() {
     [pa, quantidades],
   )
 
-  const calc = useMemo(
-    () => calcularOrdem({ paId, itens: itensInput, lotes: linhasLote, sobra }),
-    [paId, itensInput, linhasLote, sobra],
-  )
+  const [calc, setCalc] = useState({
+    pa: null,
+    lotes: [],
+    totalCru: 0,
+    custoTotalCru: 0,
+    totalKgEmbalado: 0,
+    custoKgEmbalado: 0,
+    itens: [],
+    sobra: 0,
+    perda: 0,
+    custoTotalCafe: 0,
+    custoTotalEmbalagens: 0,
+    custoTotalGeral: 0,
+  })
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const r = await calcularOrdem({ paId, itens: itensInput, lotes: linhasLote, sobra })
+      if (vivo) setCalc(r)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [paId, itensInput, linhasLote, sobra])
 
   function embSaldo(gramatura) {
     const id = embalagemDoPA(pa, gramatura)
@@ -98,10 +123,10 @@ export default function OrdemProducao() {
     return Object.keys(e).length === 0
   }
 
-  function confirmar() {
+  async function confirmar() {
     if (!validar()) return
 
-    const ordem = registrarOrdem({ data, paId, itens: itensInput, lotes: linhasLote, sobra })
+    const ordem = await registrarOrdem({ data, paId, itens: itensInput, lotes: linhasLote, sobra })
 
     registrarLog(
       nomeUsuarioAtual(),
@@ -115,7 +140,7 @@ export default function OrdemProducao() {
     setLinhasLote([{ loteId: '', kg: '' }])
     setSobra('')
     setErros({})
-    setLotesCru(lotesCruDisponiveis())
+    setLotesCru(await lotesCruDisponiveis())
     navigate('/estoque/pa/historico')
   }
 

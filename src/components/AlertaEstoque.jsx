@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { estaLogado } from '../utils/auth'
+import { estaLogado, getUsuario } from '../utils/auth'
 import { itensAbaixo } from '../utils/estoqueMinimo'
 import './AlertaEstoque.css'
 
@@ -20,7 +20,12 @@ export default function AlertaEstoque() {
 
   useEffect(() => {
     if (sessionStorage.getItem(CHAVE_SESSAO)) return
-    if (!estaLogado()) return
+    // Rotas públicas: nunca dispara o alerta (não há sessão de estoque aqui)
+    const rota = location.pathname
+    if (rota === '/' || rota.startsWith('/login') || rota.startsWith('/trocar-senha')) return
+    // Só verifica com sessão real e autenticada
+    const u = getUsuario()
+    if (!estaLogado() || !u || !(u.usuario || u.nome)) return
     let abaixo = []
     try {
       abaixo = itensAbaixo()

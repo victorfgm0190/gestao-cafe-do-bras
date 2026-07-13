@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../components/Topbar'
 import AbasCafeCru from './AbasCafeCru'
@@ -8,7 +8,6 @@ import { nomeUsuarioAtual } from '../../utils/permissoes'
 import {
   carregarKardex,
   carregarEstoqueResumo,
-  garantirKardexInicial,
   registrarMovimentacao,
   TIPOS_MOV,
   LISTA_TIPOS,
@@ -16,9 +15,6 @@ import {
 import { editarEntradaCafeCru } from '../../utils/cascata'
 import RelatorioImpacto from '../../components/RelatorioImpacto'
 import './CafeCru.css'
-
-// Semeia o kardex a partir dos lotes existentes na primeira visita.
-garantirKardexInicial()
 
 function classeBadge(tipo) {
   switch (tipo) {
@@ -57,8 +53,18 @@ const MOV_VAZIA = {
 }
 
 export default function KardexCafeCru() {
-  const [movs, setMovs] = useState(carregarKardex)
-  const [resumo, setResumo] = useState(carregarEstoqueResumo)
+  const [movs, setMovs] = useState([])
+  const [resumo, setResumo] = useState({ saldoAtual: 0, custoMedio: 0, ultimaAtualizacao: null })
+
+  // Carrega movimentações e resumo da API.
+  async function recarregar() {
+    const [m, r] = await Promise.all([carregarKardex(), carregarEstoqueResumo()])
+    setMovs(m)
+    setResumo(r)
+  }
+  useEffect(() => {
+    recarregar()
+  }, [])
 
   const [dataInicial, setDataInicial] = useState('')
   const [dataFinal, setDataFinal] = useState('')
@@ -199,7 +205,7 @@ export default function KardexCafeCru() {
   // Ajuste positivo é o único tipo do modal que aumenta o estoque (aceita custo).
   const ehAjustePositivo = form.tipo === 'Ajuste (+)'
 
-  function salvarMov(e) {
+  async function salvarMov(e) {
     e.preventDefault()
     if (!validar()) return
 
@@ -213,7 +219,7 @@ export default function KardexCafeCru() {
       sentido = 'negativo'
     }
 
-    registrarMovimentacao({
+    await registrarMovimentacao({
       tipo,
       sentido,
       data: form.data,
@@ -229,9 +235,8 @@ export default function KardexCafeCru() {
       `Kardex: ${form.tipo} de ${formatarKg(Number(String(form.quantidade).replace(',', '.')))} — ${form.descricao.trim()}`,
     )
 
-    // Recarrega do storage já reprocessado
-    setMovs(carregarKardex())
-    setResumo(carregarEstoqueResumo())
+    // Recarrega do backend já reprocessado
+    await recarregar()
     setModalAberto(false)
   }
 
@@ -258,11 +263,11 @@ export default function KardexCafeCru() {
     return Object.keys(e).length === 0
   }
 
-  function salvarEdicao(ev) {
+  async function salvarEdicao(ev) {
     ev.preventDefault()
     if (!validarEdit()) return
 
-    const rel = editarEntradaCafeCru(edicao.id, {
+    const rel = await editarEntradaCafeCru(edicao.id, {
       data: formEdit.data,
       descricao: formEdit.descricao.trim(),
       quantidade: formEdit.quantidade,
@@ -276,8 +281,7 @@ export default function KardexCafeCru() {
       `Editou a entrada ${edicao.descricao} — custo ${formatarMoeda(rel.entrada.custoAntes)} → ${formatarMoeda(rel.entrada.custoDepois)}/kg (${rel.movimentacoesAfetadas.length} saídas recalculadas)`,
     )
 
-    setMovs(carregarKardex())
-    setResumo(carregarEstoqueResumo())
+    await recarregar()
     setEdicao(null)
     setRelatorio(rel)
   }

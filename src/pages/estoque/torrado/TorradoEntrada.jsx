@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Topbar from '../../../components/Topbar'
 import AbasTorrado from './AbasTorrado'
@@ -30,8 +30,12 @@ const FORM_VAZIO = {
 }
 
 export default function TorradoEntrada() {
-  const [lotes, setLotes] = useState(lotesCruDisponiveis)
+  const [lotes, setLotes] = useState([])
   const [torras, setTorras] = useState(carregarTorras)
+
+  useEffect(() => {
+    ;(async () => setLotes(await lotesCruDisponiveis()))()
+  }, [])
   const [form, setForm] = useState(FORM_VAZIO)
   const [erros, setErros] = useState({})
 
@@ -69,11 +73,11 @@ export default function TorradoEntrada() {
     return Object.keys(e).length === 0
   }
 
-  function salvar(e) {
+  async function salvar(e) {
     e.preventDefault()
     if (!validar()) return
 
-    registrarTorra({
+    await registrarTorra({
       data: form.data,
       loteId: form.loteId,
       pesoCru: form.pesoCru,
@@ -89,41 +93,49 @@ export default function TorradoEntrada() {
       `Torra ${formatarData(form.data)}: ${formatarKg(pesoCruNum)} cru → ${formatarKg(pesoTorradoNum)} torrado (${formatarPct(rendimento)})`,
     )
 
-    setLotes(lotesCruDisponiveis())
+    setLotes(await lotesCruDisponiveis())
     setTorras(carregarTorras())
     setForm({ ...FORM_VAZIO, data: form.data })
     setErros({})
   }
 
   // ---- Excluir (estorno completo) ----
-  function excluir(torra) {
+  async function excluir(torra) {
     if (
       window.confirm(
         'Tem certeza? Esta ação vai estornar todas as movimentações geradas por esta torra.',
       )
     ) {
-      estornarTorra(torra.id)
+      await estornarTorra(torra.id)
       registrarLog(
         nomeUsuarioAtual(),
         'Estoque PP',
         ACOES.EXCLUIU,
         `Estornou a torra ${formatarData(torra.data)} — ${torra.loteCodigo} (${formatarKg(torra.pesoTorrado)} torrado)`,
       )
-      setLotes(lotesCruDisponiveis())
+      setLotes(await lotesCruDisponiveis())
       setTorras(carregarTorras())
     }
   }
 
   // ---- Editar ----
   // Lotes do select de edição: disponíveis + o lote original (mesmo sem saldo).
-  const lotesEdicao = useMemo(() => {
-    const base = lotesCruDisponiveis()
-    const torra = editId != null ? torras.find((t) => t.id === editId) : null
-    if (torra && !base.some((l) => l.id === Number(torra.loteId))) {
-      const orig = loteCruPorId(torra.loteId)
-      if (orig) return [...base, orig]
+  const [lotesEdicao, setLotesEdicao] = useState([])
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const base = await lotesCruDisponiveis()
+      const torra = editId != null ? torras.find((t) => t.id === editId) : null
+      let resultado = base
+      if (torra && !base.some((l) => l.id === Number(torra.loteId))) {
+        const orig = await loteCruPorId(torra.loteId)
+        if (orig) resultado = [...base, orig]
+      }
+      if (vivo) setLotesEdicao(resultado)
+    })()
+    return () => {
+      vivo = false
     }
-    return base
   }, [editId, torras])
 
   const torraEditando = editId != null ? torras.find((t) => t.id === editId) : null
@@ -173,13 +185,13 @@ export default function TorradoEntrada() {
     return Object.keys(e).length === 0
   }
 
-  function salvarEdicao(e) {
+  async function salvarEdicao(e) {
     e.preventDefault()
     if (!validarEdit()) return
 
     // Estorna a torra antiga e registra a nova corrigida.
-    estornarTorra(editId)
-    registrarTorra({
+    await estornarTorra(editId)
+    await registrarTorra({
       data: formEdit.data,
       loteId: formEdit.loteId,
       pesoCru: formEdit.pesoCru,
@@ -195,7 +207,7 @@ export default function TorradoEntrada() {
       `Editou a torra ${formatarData(formEdit.data)}: ${formatarKg(pesoCruEditNum)} cru → ${formatarKg(pesoTorradoEditNum)} torrado (${formatarPct(rendimentoEdit)})`,
     )
 
-    setLotes(lotesCruDisponiveis())
+    setLotes(await lotesCruDisponiveis())
     setTorras(carregarTorras())
     setEditId(null)
   }

@@ -5,7 +5,13 @@
 
 import { sql } from '../../db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from '../../_http.js'
-import { TIPOS_MOV, chaveGrupo, recalcularGrupo } from '../_lib.js'
+import {
+  TIPOS_MOV,
+  chaveGrupo,
+  recalcularGrupo,
+  custoMedioAtualGrupo,
+  snapshotCustos,
+} from '../_lib.js'
 
 const num = (v) => Number(String(v ?? '').replace(',', '.')) || 0
 const tem = (b, ...ks) => ks.some((k) => b[k] !== undefined && b[k] !== null && b[k] !== '')
@@ -74,6 +80,15 @@ export default async function handler(req, res) {
     const grupoAntigo = chaveGrupo(lote.fazenda, lote.variedade)
     const grupoNovo = chaveGrupo(produtor, variedade)
 
+    // Snapshot ANTES (para o relatório de impacto em cascata).
+    const entradaRows = await sql`
+      SELECT custo_unitario FROM kardex_cafe_cru
+       WHERE lote_id = ${id} AND tipo = ${TIPOS_MOV.ENTRADA} LIMIT 1
+    `
+    const custoAntes = Number(entradaRows[0]?.custo_unitario) || 0
+    const custoMedioAntes = await custoMedioAtualGrupo(grupoAntigo)
+    const antes = await snapshotCustos([grupoAntigo, grupoNovo])
+
     // Sincroniza a ENTRADA vinculada a este lote (se existir).
     await sql`
       UPDATE kardex_cafe_cru SET
@@ -91,8 +106,44 @@ export default async function handler(req, res) {
     const resumoNovo = await recalcularGrupo(grupoNovo)
     if (grupoAntigo !== grupoNovo) await recalcularGrupo(grupoAntigo)
 
+    // Diff de impacto: saídas cujo custo_total mudou.
+    const depois = await snapshotCustos([grupoAntigo, grupoNovo])
+    const movimentacoesAfetadas = []
+    for (const mid of Object.keys(depois)) {
+      const d = depois[mid]
+      const a = antes[mid]
+      if (!a || d.tipo === TIPOS_MOV.ENTRADA) continue
+      const totalAntes = Number(a.custo_total) || 0
+      const totalDepois = Number(d.custo_total) || 0
+      if (Math.abs(totalDepois - totalAntes) > 1e-6) {
+        movimentacoesAfetadas.push({
+          id: Number(mid),
+          data: d.data,
+          tipo: d.tipo,
+          descricao: d.descricao,
+          custoTotalAntes: totalAntes,
+          custoTotalDepois: totalDepois,
+        })
+      }
+    }
+
     const atualizados = await sql`SELECT * FROM lotes_cafe_cru WHERE id = ${id} LIMIT 1`
-    return enviarJson(res, 200, { lote: atualizados[0], resumoGrupo: resumoNovo })
+    return enviarJson(res, 200, {
+      lote: atualizados[0],
+      resumoGrupo: resumoNovo,
+      custoMedioAntes,
+      custoMedioDepois: resumoNovo.custoMedio,
+      movimentacoesAfetadas,
+      resumo: `${movimentacoesAfetadas.length} movimentação(ões) recalculada(s)`,
+      entrada: {
+        produtor,
+        variedade,
+        grupo: grupoNovo,
+        quantidade: peso,
+        custoAntes,
+        custoDepois: precoKg,
+      },
+    })
   } catch (erro) {
     return enviarErro(res, 500, `Falha ao processar o lote: ${erro?.message || erro}`)
   }

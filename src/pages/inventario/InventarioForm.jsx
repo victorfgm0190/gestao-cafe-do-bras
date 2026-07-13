@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import Topbar from '../../components/Topbar'
 import { registrarLog, ACOES } from '../../utils/auditoria'
@@ -25,17 +25,30 @@ export default function InventarioForm() {
   const location = useLocation()
   const st = location.state || {}
 
-  const [inv, setInv] = useState(() => {
-    if (st.continuarId) {
-      const existente = carregarInventario(st.continuarId)
-      if (existente) return existente
-    }
-    return novoInventario(st.tipo || 'Diário', nomeUsuarioAtual())
-  })
+  const [inv, setInv] = useState(null)
   const [etapa, setEtapa] = useState(1)
   const [regQtd, setRegQtd] = useState({})
 
-  const resumo = useMemo(() => resumoInventario(inv), [inv])
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      let inicial = null
+      if (st.continuarId) {
+        inicial = carregarInventario(st.continuarId)
+      }
+      if (!inicial) {
+        inicial = await novoInventario(st.tipo || 'Diário', nomeUsuarioAtual())
+      }
+      if (vivo) setInv(inicial)
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
+
+  const resumo = useMemo(() => resumoInventario(inv || { itens: [] }), [inv])
+
+  if (!inv) return null
 
   function setFisico(idx, valor) {
     setInv((prev) => {
@@ -63,8 +76,8 @@ export default function InventarioForm() {
     setEtapa(2)
   }
 
-  function regularizar(idx, opcoes) {
-    const atualizado = regularizarItem(inv.id, idx, opcoes)
+  async function regularizar(idx, opcoes) {
+    const atualizado = await regularizarItem(inv.id, idx, opcoes)
     if (atualizado) setInv({ ...atualizado })
   }
 

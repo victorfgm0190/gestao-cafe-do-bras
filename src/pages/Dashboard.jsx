@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Topbar from '../components/Topbar'
 import { getUsuario } from '../utils/auth'
@@ -91,10 +91,19 @@ export default function Dashboard() {
   const modulosVisiveis = MODULOS.filter((m) => !m.soMaster || master)
 
   // Resumo de estoque rápido
-  const cruKg = useMemo(
-    () => lotesCruDisponiveis().reduce((s, l) => s + (Number(l.saldoDisponivel) || 0), 0),
-    [],
-  )
+  const [cruKg, setCruKg] = useState(0)
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      const lotes = await lotesCruDisponiveis()
+      if (vivo) {
+        setCruKg(lotes.reduce((s, l) => s + (Number(l.saldoDisponivel) || 0), 0))
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
   const torrado = useMemo(() => carregarEstoqueTorrado(), [])
   const embalados = useMemo(
     () =>
