@@ -7,7 +7,7 @@
 
 import { sql } from '../db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from '../_http.js'
-import { TIPOS_MOV, calcularOrdem, formatarGramatura } from './_lib.js'
+import { TIPOS_MOV, calcularOrdem, formatarGramatura, pesoGramas } from './_lib.js'
 import { chaveGrupo, recalcularGrupo } from '../cafe-cru/_lib.js'
 import { recalcularTorrado } from '../torrado/_lib.js'
 import { recalcularInsumo } from '../insumos/_lib.js'
@@ -95,7 +95,7 @@ export default async function handler(req, res) {
 
       const est = await sql`
         INSERT INTO pa_estoque (pa_id, gramatura, quantidade, custo_unitario, custo_total, data, ordem_id)
-        VALUES (${pa?.id ?? null}, ${it.gramatura}, ${it.quantidade}, ${it.custoUnitarioTotal},
+        VALUES (${pa?.id ?? null}, ${pesoGramas(it.gramatura)}, ${it.quantidade}, ${it.custoUnitarioTotal},
                 ${it.custoTotalGramatura}, ${data}, ${ordemId})
         RETURNING id
       `
@@ -103,7 +103,7 @@ export default async function handler(req, res) {
         INSERT INTO pa_movimentacoes
           (ordem_id, data, tipo, pa_id, pa_nome, gramatura, quantidade, custo_unitario, custo_total)
         VALUES (${ordemId}, ${data}, ${TIPOS_MOV.ENTRADA}, ${pa?.id ?? null}, ${pa?.nome || ''},
-                ${it.gramatura}, ${it.quantidade}, ${it.custoUnitarioTotal}, ${it.custoTotalGramatura})
+                ${pesoGramas(it.gramatura)}, ${it.quantidade}, ${it.custoUnitarioTotal}, ${it.custoTotalGramatura})
         RETURNING id
       `
       itensOrdem.push({

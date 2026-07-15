@@ -12,6 +12,7 @@ import {
   registrarOrdem,
   formatarGramatura,
   embalagemDoPA,
+  pesoGramas,
 } from '../../../utils/pa'
 import { carregarCadastro as carregarInsumos, resumoPorInsumo } from '../../../utils/insumos'
 import '../CafeCru.css'
@@ -102,7 +103,8 @@ export default function OrdemProducao() {
 
   // ---- Perda esperada × real (tudo em gramas) ----
   const perdaPadrao = Number(pa?.perdaTorraPadrao) || 0
-  const pesoEmbaladoG = (Number(calc.totalKgEmbalado) || 0) * 1000
+  // Peso embalado calculado na tela via pesoGramas (trata 'drip' como 10g).
+  const pesoEmbaladoG = itensInput.reduce((s, it) => s + it.quantidade * pesoGramas(it.gramatura), 0)
   const sugestaoCruG =
     perdaPadrao > 0 && perdaPadrao < 100 && pesoEmbaladoG > 0
       ? pesoEmbaladoG / (1 - perdaPadrao / 100)

@@ -5,6 +5,7 @@
 
 import { sql } from '../../../db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo } from '../../../_http.js'
+import { pesoGramas } from '../../_lib.js'
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
@@ -45,7 +46,7 @@ export default async function handler(req, res) {
     }))
 
     const itensNovos = ordem.itens.map((it) => {
-      const gramaturaKg = it.gramatura / 1000
+      const gramaturaKg = pesoGramas(it.gramatura) / 1000
       const custoUnitarioCafe = novoCustoKgEmbalado * gramaturaKg
       const custoUnitarioEmbalagem = Number(it.custoUnitarioEmbalagem) || 0 // embalagem não muda
       const custoUnitarioTotal = custoUnitarioCafe + custoUnitarioEmbalagem

@@ -17,6 +17,12 @@ export function formatarGramatura(g) {
   return n === 1000 ? '1kg' : `${n}g`
 }
 
+// Peso em gramas de uma gramatura. 'drip' = sachê de 10g; demais = o próprio número.
+// Use SEMPRE que a gramatura for usada como número (peso/custo).
+export function pesoGramas(g) {
+  return g === 'drip' ? 10 : Number(g) || 0
+}
+
 const num = (v) => Number(v) || 0
 const mapPA = (r) =>
   r && {

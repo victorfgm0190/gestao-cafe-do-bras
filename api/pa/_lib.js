@@ -28,6 +28,12 @@ export function formatarGramatura(g) {
   return n === 1000 ? '1kg' : `${n}g`
 }
 
+// Peso em gramas de uma gramatura. 'drip' é um sachê de 10g; as demais são o
+// próprio número. Use SEMPRE que a gramatura for usada como número (peso/custo).
+export function pesoGramas(g) {
+  return g === 'drip' ? 10 : Number(g) || 0
+}
+
 // Embalagem vinculada a uma gramatura do PA (linha do banco, snake_case).
 export function embalagemDoPA(pa, gramatura) {
   if (gramatura === 'drip') return pa?.embalagem_drip_id ?? null
@@ -75,15 +81,16 @@ export async function calcularOrdem(input) {
   const totalCru = lotes.reduce((s, l) => s + l.kg, 0)
   const custoTotalCru = lotes.reduce((s, l) => s + l.custoTotalLote, 0)
 
+  // Preserva a gramatura como identificador (número ou 'drip'); o peso vem de pesoGramas().
   const itensBrutos = (input.itens || [])
-    .map((it) => ({ gramatura: Number(it.gramatura) || 0, quantidade: Number(it.quantidade) || 0 }))
-    .filter((it) => it.gramatura > 0 && it.quantidade > 0)
+    .map((it) => ({ gramatura: it.gramatura, quantidade: Number(it.quantidade) || 0 }))
+    .filter((it) => pesoGramas(it.gramatura) > 0 && it.quantidade > 0)
 
-  const totalKgEmbalado = itensBrutos.reduce((s, it) => s + (it.quantidade * it.gramatura) / 1000, 0)
+  const totalKgEmbalado = itensBrutos.reduce((s, it) => s + (it.quantidade * pesoGramas(it.gramatura)) / 1000, 0)
   const custoKgEmbalado = totalKgEmbalado > 0 ? custoTotalCru / totalKgEmbalado : 0
 
   const itens = itensBrutos.map((it) => {
-    const gramaturaKg = it.gramatura / 1000
+    const gramaturaKg = pesoGramas(it.gramatura) / 1000
     const embalagemId = embalagemDoPA(pa, it.gramatura)
     const embNome = embalagemId ? nomeInsumo[embalagemId] || 'Embalagem' : null
     const custoUnitarioCafe = custoKgEmbalado * gramaturaKg
