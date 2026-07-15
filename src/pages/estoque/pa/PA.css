@@ -364,6 +364,62 @@ td.pa-proj-col strong {
   font-weight: 800;
 }
 
+/* Café de origem — seleção de grupos (fazenda + variedade) no cadastro do PA */
+.pa-origem-grupo {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.pa-origem-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  background: var(--creme);
+  border: 1px solid var(--creme-escuro);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.pa-origem-item:hover {
+  border-color: var(--dourado);
+}
+
+.pa-origem-item.ativo {
+  border-color: var(--dourado);
+  background: rgba(201, 168, 76, 0.12);
+}
+
+.pa-origem-item input {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: var(--verde);
+  flex-shrink: 0;
+}
+
+.pa-origem-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13.5px;
+  color: var(--texto-sec);
+  line-height: 1.35;
+}
+
+.pa-origem-texto strong {
+  color: var(--verde);
+}
+
+.pa-origem-saldo {
+  font-size: 12px;
+  color: var(--texto-muted);
+  font-weight: 700;
+}
+
 /* Checkboxes de gramatura */
 .pa-check-grupo {
   display: flex;

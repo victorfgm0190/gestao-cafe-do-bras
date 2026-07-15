@@ -90,6 +90,16 @@ export async function editarPA(id, dados) {
 export async function excluirPA(id) {
   await sendJson(`/api/pa/cadastro/${id}`, 'DELETE')
 }
+// Grupos de café cru (fazenda + variedade) com saldo disponível — para vincular
+// origens a um produto (PA).
+export async function carregarGruposCafeCru() {
+  const d = await getJson('/api/cafe-cru/grupos')
+  return (d.grupos || []).map((g) => ({
+    fazenda: g.fazenda || '',
+    variedade: g.variedade || '',
+    saldoTotalDisponivel: num(g.saldoTotalDisponivel),
+  }))
+}
 export async function embalagensPadrao() {
   const d = await getJson('/api/insumos/cadastro')
   const insumos = d.insumos || []

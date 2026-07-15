@@ -41,6 +41,19 @@ export function pesoGramas(g) {
   return parseFloat(s) || 0
 }
 
+// Normaliza cafe_origem_ids para um array de grupos { fazenda, variedade }.
+// Aceita array de objetos; descarta entradas sem os dois campos. Devolve null se
+// a entrada não for um array (sinaliza "não mexer" no PUT).
+export function normalizarCafeOrigem(valor) {
+  if (!Array.isArray(valor)) return null
+  return valor
+    .map((o) => ({
+      fazenda: String(o?.fazenda ?? '').trim(),
+      variedade: String(o?.variedade ?? '').trim(),
+    }))
+    .filter((o) => o.fazenda && o.variedade)
+}
+
 // Embalagem vinculada a uma gramatura do PA (linha do banco, snake_case).
 export function embalagemDoPA(pa, gramatura) {
   if (gramatura === 'drip') return pa?.embalagem_drip_id ?? null
@@ -196,11 +209,15 @@ export async function resumoProjecaoPA() {
   if (!pas.length) return []
 
   const lotes = await sql`
-    SELECT id, saldo_disponivel FROM lotes_cafe_cru WHERE saldo_disponivel > 0
+    SELECT fazenda, variedade, saldo_disponivel FROM lotes_cafe_cru WHERE saldo_disponivel > 0
   `
   const saldoTotalDisponivel = lotes.reduce((s, l) => s + (Number(l.saldo_disponivel) || 0), 0)
-  const saldoPorLote = {}
-  for (const l of lotes) saldoPorLote[l.id] = Number(l.saldo_disponivel) || 0
+  // Saldo disponível somado por grupo (fazenda + variedade).
+  const saldoPorGrupo = {}
+  for (const l of lotes) {
+    const chave = chaveGrupo(l.fazenda, l.variedade)
+    saldoPorGrupo[chave] = (saldoPorGrupo[chave] || 0) + (Number(l.saldo_disponivel) || 0)
+  }
 
   // Estoque real agregado por pa_id → { chaveMix: quantidade }.
   const estoque = await resumoPAEstoque()
@@ -214,12 +231,13 @@ export async function resumoProjecaoPA() {
 
   return pas.map((pa) => {
     const mix = pa.mix_projecao && typeof pa.mix_projecao === 'object' ? pa.mix_projecao : {}
-    const origemIds = Array.isArray(pa.cafe_origem_ids) ? pa.cafe_origem_ids : []
+    // cafe_origem_ids: array de grupos { fazenda, variedade } vinculados ao produto.
+    const origens = Array.isArray(pa.cafe_origem_ids) ? pa.cafe_origem_ids : []
     const perda = Number(pa.perda_torra_padrao) || 0
 
-    // Café cru vinculado (cafe_origem_ids) ou, sem vínculo, todo o disponível.
-    const kgCru = origemIds.length
-      ? origemIds.reduce((s, id) => s + (saldoPorLote[id] || 0), 0)
+    // Café cru vinculado (grupos em cafe_origem_ids) ou, sem vínculo, todo o disponível.
+    const kgCru = origens.length
+      ? origens.reduce((s, o) => s + (saldoPorGrupo[chaveGrupo(o?.fazenda, o?.variedade)] || 0), 0)
       : saldoTotalDisponivel
     const kgTorrado = kgCru * (1 - perda / 100)
 

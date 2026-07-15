@@ -3,6 +3,7 @@
 
 import { sql } from '../db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from '../_http.js'
+import { normalizarCafeOrigem } from './_lib.js'
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
@@ -24,7 +25,9 @@ export default async function handler(req, res) {
     const gramaturas = Array.isArray(b.gramaturas) ? b.gramaturas.map(Number) : []
     const perda = b.perdaTorraPadrao !== undefined ? Number(String(b.perdaTorraPadrao).replace(',', '.')) || 0 : 10
     const mixProjecao = b.mixProjecao && typeof b.mixProjecao === 'object' ? b.mixProjecao : null
-    const cafeOrigemIds = Array.isArray(b.cafeOrigemIds) ? b.cafeOrigemIds : null
+    // Origens de café: array de grupos { fazenda, variedade }; null se vazio.
+    const origens = normalizarCafeOrigem(b.cafeOrigemIds)
+    const cafeOrigemIds = origens && origens.length ? origens : null
 
     const linhas = await sql`
       INSERT INTO pa_cadastro

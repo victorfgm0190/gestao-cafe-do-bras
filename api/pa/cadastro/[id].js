@@ -3,6 +3,7 @@
 
 import { sql } from '../../db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from '../../_http.js'
+import { normalizarCafeOrigem } from '../_lib.js'
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
@@ -40,14 +41,14 @@ export default async function handler(req, res) {
         : pa.mix_projecao != null
           ? JSON.stringify(pa.mix_projecao)
           : null
-    const cafeOrigemIds =
-      b.cafeOrigemIds !== undefined
-        ? Array.isArray(b.cafeOrigemIds)
-          ? JSON.stringify(b.cafeOrigemIds)
-          : null
-        : pa.cafe_origem_ids != null
-          ? JSON.stringify(pa.cafe_origem_ids)
-          : null
+    // Origens: array de grupos { fazenda, variedade }. Ausente → mantém o atual.
+    let cafeOrigemIds
+    if (b.cafeOrigemIds !== undefined) {
+      const origens = normalizarCafeOrigem(b.cafeOrigemIds)
+      cafeOrigemIds = origens && origens.length ? JSON.stringify(origens) : null
+    } else {
+      cafeOrigemIds = pa.cafe_origem_ids != null ? JSON.stringify(pa.cafe_origem_ids) : null
+    }
     const linhas = await sql`
       UPDATE pa_cadastro SET
         nome = ${b.nome !== undefined ? String(b.nome).trim() : pa.nome},

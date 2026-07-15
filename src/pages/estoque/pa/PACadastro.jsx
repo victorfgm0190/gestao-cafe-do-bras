@@ -10,6 +10,7 @@ import {
   editarPA,
   excluirPA,
   embalagensPadrao,
+  carregarGruposCafeCru,
   formatarGramatura,
   GRAMATURAS,
 } from '../../../utils/pa'
@@ -32,7 +33,15 @@ const FORM_VAZIO = {
   perdaTorraPadrao: '10',
   ativo: true,
   mix: { ...MIX_VAZIO },
+  cafeOrigem: [], // [{ fazenda, variedade }]
 }
+
+// Chave de comparação de um grupo de café cru (fazenda + variedade).
+function chaveOrigem(fazenda, variedade) {
+  return `${(fazenda || '').trim()}|${(variedade || '').trim()}`
+}
+
+const fmtKgOrigem = (n) => `${(Number(n) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} kg`
 
 // Soma dos percentuais do mix (campos vazios contam como 0).
 function somaMix(mix) {
@@ -47,6 +56,7 @@ function formatarPct(n) {
 export default function PACadastro() {
   const [pas, setPas] = useState([])
   const [embalagens, setEmbalagens] = useState({ embalagem250Id: null, embalagem1000Id: null })
+  const [grupos, setGrupos] = useState([])
   const [modalAberto, setModalAberto] = useState(false)
   const [editandoId, setEditandoId] = useState(null)
   const [form, setForm] = useState(FORM_VAZIO)
@@ -59,10 +69,15 @@ export default function PACadastro() {
   useEffect(() => {
     let vivo = true
     ;(async () => {
-      const [lista, emb] = await Promise.all([carregarPA(), embalagensPadrao()])
+      const [lista, emb, grps] = await Promise.all([
+        carregarPA(),
+        embalagensPadrao(),
+        carregarGruposCafeCru(),
+      ])
       if (vivo) {
         setPas(lista)
         setEmbalagens(emb)
+        setGrupos(grps)
       }
     })()
     return () => {
@@ -85,6 +100,11 @@ export default function PACadastro() {
         mix[chave] = v != null && v !== 0 ? String(v) : ''
       }
     }
+    const cafeOrigem = Array.isArray(pa.cafeOrigemIds)
+      ? pa.cafeOrigemIds
+          .filter((o) => o && o.fazenda && o.variedade)
+          .map((o) => ({ fazenda: o.fazenda, variedade: o.variedade }))
+      : []
     setEditandoId(pa.id)
     setForm({
       nome: pa.nome,
@@ -92,9 +112,21 @@ export default function PACadastro() {
       perdaTorraPadrao: String(pa.perdaTorraPadrao ?? 10),
       ativo: pa.ativo !== false,
       mix,
+      cafeOrigem,
     })
     setErros({})
     setModalAberto(true)
+  }
+
+  function toggleOrigem(grupo) {
+    setForm((f) => {
+      const chave = chaveOrigem(grupo.fazenda, grupo.variedade)
+      const tem = f.cafeOrigem.some((o) => chaveOrigem(o.fazenda, o.variedade) === chave)
+      const cafeOrigem = tem
+        ? f.cafeOrigem.filter((o) => chaveOrigem(o.fazenda, o.variedade) !== chave)
+        : [...f.cafeOrigem, { fazenda: grupo.fazenda, variedade: grupo.variedade }]
+      return { ...f, cafeOrigem }
+    })
   }
 
   function toggleGramatura(g) {
@@ -145,6 +177,7 @@ export default function PACadastro() {
       perdaTorraPadrao: Number(String(form.perdaTorraPadrao).replace(',', '.')) || 0,
       ativo: form.ativo,
       mixProjecao,
+      cafeOrigemIds: form.cafeOrigem,
     }
 
     const autor = nomeUsuarioAtual()
@@ -336,6 +369,37 @@ export default function PACadastro() {
                   )
                 })()}
                 {erros.mix && <span className="campo-erro">{erros.mix}</span>}
+              </div>
+
+              <div className="campo">
+                <span className="campo-label">Café de origem</span>
+                <span className="campo-ajuda">
+                  Fazendas/variedades de café cru que abastecem este produto. Sem seleção, a projeção usa
+                  todo o café cru disponível.
+                </span>
+                {grupos.length === 0 ? (
+                  <span className="campo-ajuda">Nenhum grupo de café cru cadastrado ainda.</span>
+                ) : (
+                  <div className="pa-origem-grupo">
+                    {grupos.map((g) => {
+                      const chave = chaveOrigem(g.fazenda, g.variedade)
+                      const marcado = form.cafeOrigem.some(
+                        (o) => chaveOrigem(o.fazenda, o.variedade) === chave,
+                      )
+                      return (
+                        <label key={chave} className={`pa-origem-item ${marcado ? 'ativo' : ''}`}>
+                          <input type="checkbox" checked={marcado} onChange={() => toggleOrigem(g)} />
+                          <span className="pa-origem-texto">
+                            <strong>{g.fazenda || '—'}</strong> — {g.variedade || '—'}
+                            <span className="pa-origem-saldo">
+                              {fmtKgOrigem(g.saldoTotalDisponivel)} disponível
+                            </span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
               <label className="pa-check">
