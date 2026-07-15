@@ -34,6 +34,7 @@ export default function Bling() {
   const [ocupado, setOcupado] = useState('')
   const [aviso, setAviso] = useState(null)
   const [historico, setHistorico] = useState(carregarHistorico)
+  const [produtos, setProdutos] = useState([])
 
   // Lê o status atual da conexão no backend
   async function verificarStatus() {
@@ -123,6 +124,30 @@ export default function Bling() {
     }
   }
 
+  async function sincronizarProdutos() {
+    setOcupado('produtos')
+    setAviso(null)
+    try {
+      const r = await fetch('/api/bling/produtos')
+      const json = await r.json()
+      if (json?.sucesso) {
+        const lista = Array.isArray(json.dados) ? json.dados : []
+        setProdutos(lista)
+        registrar('Produtos', true, `${lista.length} produto(s) carregado(s)`)
+        setAviso({ tipo: 'sucesso', texto: `${lista.length} produto(s) carregado(s) do Bling.` })
+        registrarLog(nomeUsuarioAtual(), 'Integrações', 'Consultou', `Buscou ${lista.length} produtos do Bling`)
+      } else {
+        registrar('Produtos', false, json?.erro || 'Falha')
+        setAviso({ tipo: 'erro', texto: json?.erro || 'Falha ao buscar produtos.' })
+      }
+    } catch {
+      registrar('Produtos', false, 'Erro de rede')
+      setAviso({ tipo: 'erro', texto: 'Erro ao contatar o backend.' })
+    } finally {
+      setOcupado('')
+    }
+  }
+
   async function sincronizarEstoque() {
     setOcupado('estoque')
     setAviso(null)
@@ -203,6 +228,19 @@ export default function Bling() {
           </div>
 
           <div className="bl-card">
+            <div className="bl-card-icone">🏷️</div>
+            <h3>Produtos</h3>
+            <p>Busca o catálogo de produtos cadastrados no Bling e exibe abaixo.</p>
+            <button
+              className="btn btn-secondary"
+              onClick={sincronizarProdutos}
+              disabled={!conectado || ocupado === 'produtos'}
+            >
+              {ocupado === 'produtos' ? 'Sincronizando...' : 'Sincronizar produtos'}
+            </button>
+          </div>
+
+          <div className="bl-card">
             <div className="bl-card-icone">📦</div>
             <h3>Estoque</h3>
             <p>Concilia os saldos de produtos entre o sistema e o Bling.</p>
@@ -215,6 +253,53 @@ export default function Bling() {
             </button>
           </div>
         </div>
+
+        {(ocupado === 'produtos' || produtos.length > 0) && (
+          <section className="bl-catalogo">
+            <h2>Catálogo de produtos do Bling</h2>
+            <div className="bl-tabela-wrap">
+              {ocupado === 'produtos' ? (
+                <div className="bl-carregando">Carregando produtos do Bling...</div>
+              ) : (
+                <table className="bl-tabela">
+                  <thead>
+                    <tr>
+                      <th>Código</th>
+                      <th>Nome</th>
+                      <th className="col-num">Preço</th>
+                      <th className="col-num">Estoque</th>
+                      <th>Situação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {produtos.map((p) => (
+                      <tr key={p.id}>
+                        <td>{p.codigo || '—'}</td>
+                        <td>{p.nome}</td>
+                        <td className="col-num">
+                          {Number(p.preco).toLocaleString('pt-BR', {
+                            style: 'currency',
+                            currency: 'BRL',
+                          })}
+                        </td>
+                        <td className="col-num">
+                          {Number(p.estoque).toLocaleString('pt-BR')} {p.unidade}
+                        </td>
+                        <td>
+                          <span
+                            className={`badge ${p.situacao === 'A' ? 'badge-pago' : 'badge-vencido'}`}
+                          >
+                            {p.situacao === 'A' ? 'Ativo' : p.situacao === 'I' ? 'Inativo' : p.situacao || '—'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </section>
+        )}
 
         <section className="bl-historico">
           <h2>Histórico de sincronizações</h2>

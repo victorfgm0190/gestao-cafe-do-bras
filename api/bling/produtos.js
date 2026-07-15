@@ -14,12 +14,14 @@ import {
 } from './_lib.js'
 
 function mapearProduto(p) {
+  const estoque = Number(p.estoque?.saldoVirtualTotal ?? p.saldoFisicoTotal ?? 0)
   return {
     id: p.id,
     codigo: p.codigo || '',
     nome: p.nome || '',
     preco: Number(p.preco || 0),
-    saldo: Number(p.estoque?.saldoVirtualTotal ?? p.saldoFisicoTotal ?? 0),
+    estoque, // saldoVirtualTotal
+    saldo: estoque, // compat: consumidores antigos
     unidade: p.unidade || '',
     situacao: p.situacao || '',
   }

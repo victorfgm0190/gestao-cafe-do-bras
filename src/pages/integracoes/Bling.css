@@ -129,6 +129,31 @@
   align-self: flex-start;
 }
 
+/* ---------- Catálogo de produtos ---------- */
+.bl-catalogo {
+  margin-bottom: 28px;
+}
+
+.bl-catalogo h2 {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--verde);
+  margin-bottom: 14px;
+}
+
+.bl-carregando {
+  padding: 36px 18px;
+  text-align: center;
+  color: var(--texto-muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.bl-tabela .col-num {
+  text-align: right;
+  white-space: nowrap;
+}
+
 /* ---------- Histórico ---------- */
 .bl-historico h2 {
   font-size: 18px;
