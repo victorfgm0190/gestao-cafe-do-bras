@@ -4,7 +4,7 @@ import Topbar from '../components/Topbar'
 import { getUsuario } from '../utils/auth'
 import { ehMaster } from '../utils/permissoes'
 import { formatarKg, formatarMoeda } from '../utils/formato'
-import { lotesCruDisponiveis, resumoPAEstoque, formatarGramatura, pesoGramas } from '../utils/pa'
+import { lotesCruDisponiveis, resumoPAEstoque, resumoProjecaoPA } from '../utils/pa'
 import { carregarEstoqueTorrado } from '../utils/torrado'
 import './Dashboard.css'
 
@@ -115,20 +115,33 @@ export default function Dashboard() {
       vivo = false
     }
   }, [])
-  const [embalados, setEmbalados] = useState([])
+  // Pacotes reais em estoque (soma de todo o pa_estoque).
+  const [realPacotes, setRealPacotes] = useState(0)
   useEffect(() => {
     let vivo = true
     ;(async () => {
       const r = await resumoPAEstoque()
-      if (vivo) {
-        setEmbalados(
-          r
-            .filter((x) => x.quantidade > 0)
-            .sort(
-              (a, b) =>
-                (a.paNome || '').localeCompare(b.paNome || '') || pesoGramas(a.gramatura) - pesoGramas(b.gramatura),
-            ),
+      if (vivo) setRealPacotes(r.reduce((s, x) => s + (Number(x.quantidade) || 0), 0))
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
+  // Pacotes projetados adicionais (soma de projetado_adicional da projeção).
+  // null = projeção indisponível → o card mostra só o real.
+  const [projetadoPacotes, setProjetadoPacotes] = useState(null)
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      try {
+        const proj = await resumoProjecaoPA()
+        const soma = proj.reduce(
+          (s, p) => s + Object.values(p.projetadoAdicional || {}).reduce((a, b) => a + (Number(b) || 0), 0),
+          0,
         )
+        if (vivo) setProjetadoPacotes(soma)
+      } catch {
+        if (vivo) setProjetadoPacotes(null)
       }
     })()
     return () => {
@@ -177,23 +190,25 @@ export default function Dashboard() {
           <div className="dash-eq-card" onClick={() => navigate('/estoque/pa/estoque')}>
             <span className="dash-eq-icone">☕</span>
             <span className="dash-eq-label">Produtos embalados</span>
-            {embalados.length === 0 ? (
-              <strong className="dash-eq-valor">—</strong>
-            ) : (
-              <ul className="dash-eq-lista">
-                {embalados.slice(0, 5).map((p) => (
-                  <li key={`${p.paId}-${p.gramatura}`}>
-                    <span>
-                      {p.paNome} {formatarGramatura(p.gramatura)}
-                    </span>
-                    <strong>{p.quantidade} un</strong>
-                  </li>
-                ))}
-                {embalados.length > 5 && (
-                  <li className="dash-eq-mais">+{embalados.length - 5} outros</li>
-                )}
-              </ul>
-            )}
+            <div className="dash-pa-resumo">
+              <div className="dash-pa-linha">
+                <span className="dash-pa-rot">Real</span>
+                <strong className="dash-pa-real">{realPacotes} un</strong>
+              </div>
+              {projetadoPacotes != null && (
+                <>
+                  <div className="dash-pa-linha">
+                    <span className="dash-pa-rot">+ Projetado</span>
+                    <strong className="dash-pa-proj">{projetadoPacotes} un</strong>
+                  </div>
+                  <div className="dash-pa-divisor" />
+                  <div className="dash-pa-linha total">
+                    <span className="dash-pa-rot">= Total site</span>
+                    <strong className="dash-pa-total">{realPacotes + projetadoPacotes} un</strong>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 

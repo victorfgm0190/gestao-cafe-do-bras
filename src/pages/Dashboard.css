@@ -114,6 +114,57 @@
   font-style: italic;
 }
 
+/* Card Produtos embalados — resumo Real / + Projetado / = Total site */
+.dash-pa-resumo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.dash-pa-linha {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dash-pa-rot {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--texto-muted);
+}
+
+.dash-pa-real {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--verde);
+}
+
+.dash-pa-proj {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--texto-muted);
+}
+
+.dash-pa-divisor {
+  height: 1px;
+  background: var(--creme-escuro);
+  margin: 2px 0;
+}
+
+.dash-pa-linha.total .dash-pa-rot {
+  color: var(--verde);
+}
+
+.dash-pa-total {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--dourado);
+}
+
 .dash-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
