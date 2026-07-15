@@ -129,6 +129,17 @@
   align-self: flex-start;
 }
 
+.pa-card-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.pa-card-acoes .btn {
+  margin-top: 0;
+}
+
 /* ---------- Catálogo de produtos ---------- */
 .bl-catalogo {
   margin-bottom: 28px;

@@ -148,6 +148,30 @@ export default function Bling() {
     }
   }
 
+  async function importarProdutosPA() {
+    setOcupado('importarPA')
+    setAviso(null)
+    try {
+      const r = await fetch('/api/bling/importar-produtos-pa')
+      const json = await r.json()
+      if (r.ok && json?.sucesso) {
+        const total = Number(json.total) || 0
+        registrar('Produtos → PA', true, `${total} produto(s) (${json.inseridos} novo(s), ${json.atualizados} atualizado(s))`)
+        setAviso({ tipo: 'sucesso', texto: `${total} produtos importados para o catálogo de PA.` })
+        registrarLog(nomeUsuarioAtual(), 'Integrações', ACOES.INCLUIU, `Importou ${total} produtos do Bling para o catálogo de PA`)
+      } else {
+        const msg = json?.error || json?.erro || 'Falha ao importar produtos para PA.'
+        registrar('Produtos → PA', false, msg)
+        setAviso({ tipo: 'erro', texto: msg })
+      }
+    } catch {
+      registrar('Produtos → PA', false, 'Erro de rede')
+      setAviso({ tipo: 'erro', texto: 'Erro ao contatar o backend.' })
+    } finally {
+      setOcupado('')
+    }
+  }
+
   async function sincronizarEstoque() {
     setOcupado('estoque')
     setAviso(null)
@@ -231,13 +255,22 @@ export default function Bling() {
             <div className="bl-card-icone">🏷️</div>
             <h3>Produtos</h3>
             <p>Busca o catálogo de produtos cadastrados no Bling e exibe abaixo.</p>
-            <button
-              className="btn btn-secondary"
-              onClick={sincronizarProdutos}
-              disabled={!conectado || ocupado === 'produtos'}
-            >
-              {ocupado === 'produtos' ? 'Sincronizando...' : 'Sincronizar produtos'}
-            </button>
+            <div className="pa-card-acoes">
+              <button
+                className="btn btn-secondary"
+                onClick={sincronizarProdutos}
+                disabled={!conectado || ocupado === 'produtos'}
+              >
+                {ocupado === 'produtos' ? 'Sincronizando...' : 'Sincronizar produtos'}
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={importarProdutosPA}
+                disabled={!conectado || ocupado === 'importarPA'}
+              >
+                {ocupado === 'importarPA' ? 'Importando...' : 'Importar produtos para PA'}
+              </button>
+            </div>
           </div>
 
           <div className="bl-card">
