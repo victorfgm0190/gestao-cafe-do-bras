@@ -48,6 +48,7 @@ export async function gerarItensSistema() {
         loteCodigo: l.codigo_lote || '',
         produtor: l.fazenda || '',
         variedade: l.variedade || '',
+        precoKg: Number(l.preco_kg) || 0,
       }),
     )
   }
@@ -75,6 +76,7 @@ export async function gerarItensSistema() {
         cafeId: c.id,
         produtor: c.fazenda || '',
         variedade: c.variedade || '',
+        precoKg: null,
         semLotes: true,
       }),
     )

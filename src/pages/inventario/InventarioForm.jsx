@@ -20,6 +20,13 @@ function fmtNum(n) {
   return (Number(n) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })
 }
 
+// Preço/kg do lote: "R$ XX,XX" ou "—" quando ausente/zero (ex.: linhas "sem lotes").
+function fmtPrecoKg(v) {
+  const n = Number(v) || 0
+  if (!n) return '—'
+  return `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
 export default function InventarioForm() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -109,6 +116,7 @@ export default function InventarioForm() {
               <tr>
                 <th>{categoria === CATEGORIAS.CRU ? 'Lote' : 'Item'}</th>
                 {colProdutor && <th>Produtor / variedade</th>}
+                {categoria === CATEGORIAS.CRU && <th className="kx-num">Preço/kg</th>}
                 {colUnidade && <th>Unidade</th>}
                 <th className="kx-num">Saldo sistema</th>
                 <th className="kx-num">Contagem física</th>
@@ -120,6 +128,7 @@ export default function InventarioForm() {
                 <tr key={idx}>
                   <td style={{ fontWeight: 600 }}>{it.referencia}</td>
                   {colProdutor && <td>{it.descricao}</td>}
+                  {categoria === CATEGORIAS.CRU && <td className="kx-num">{fmtPrecoKg(it.precoKg)}</td>}
                   {colUnidade && <td>{it.unidade}</td>}
                   <td className="kx-num">
                     {fmtNum(it.saldoSistema)} {it.unidade}
