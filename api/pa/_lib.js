@@ -18,20 +18,23 @@ export const TIPOS_MOV = {
   PERDA: 'Perda',
 }
 
-export const GRAMATURAS = [200, 250, 1000]
+export const GRAMATURAS = [200, 250, 1000, 'drip']
 
 const num = (v) => Number(String(v ?? '').replace(',', '.')) || 0
 
 export function formatarGramatura(g) {
+  if (g === 'drip') return 'Drip (10g)'
   const n = Number(g) || 0
   return n === 1000 ? '1kg' : `${n}g`
 }
 
 // Embalagem vinculada a uma gramatura do PA (linha do banco, snake_case).
 export function embalagemDoPA(pa, gramatura) {
+  if (gramatura === 'drip') return pa?.embalagem_drip_id ?? null
+  if (Number(gramatura) === 200) return pa?.embalagem_200_id ?? null
   if (Number(gramatura) === 250) return pa?.embalagem_250_id ?? null
   if (Number(gramatura) === 1000) return pa?.embalagem_1000_id ?? null
-  return null // 200g não tem embalagem vinculada por padrão
+  return null
 }
 
 // Calcula os números de uma ordem sem persistir (prévia).

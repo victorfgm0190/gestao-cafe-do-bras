@@ -9,9 +9,10 @@ import { loteCruPorId, lotesCruDisponiveis } from './lotesCru'
 // Re-exporta para as telas que importam de pa.js (OrdemProducao, Dashboard).
 export { lotesCruDisponiveis, loteCruPorId }
 
-export const GRAMATURAS = [200, 250, 1000]
+export const GRAMATURAS = [200, 250, 1000, 'drip']
 
 export function formatarGramatura(g) {
+  if (g === 'drip') return 'Drip (10g)'
   const n = Number(g) || 0
   return n === 1000 ? '1kg' : `${n}g`
 }
@@ -21,9 +22,11 @@ const mapPA = (r) =>
   r && {
     id: r.id,
     nome: r.nome || '',
-    gramaturas: Array.isArray(r.gramaturas) ? r.gramaturas.map(Number) : [],
+    gramaturas: Array.isArray(r.gramaturas) ? r.gramaturas.map((g) => (g === 'drip' ? 'drip' : Number(g))) : [],
+    embalagem200Id: r.embalagem_200_id ?? null,
     embalagem250Id: r.embalagem_250_id ?? null,
     embalagem1000Id: r.embalagem_1000_id ?? null,
+    embalagemDripId: r.embalagem_drip_id ?? null,
     ativo: r.ativo,
     perdaTorraPadrao: r.perda_torra_padrao != null ? num(r.perda_torra_padrao) : 10,
   }
@@ -49,6 +52,8 @@ const mapOrdem = (o) =>
 
 // Embalagem vinculada a uma gramatura do PA (objeto já mapeado em camelCase).
 export function embalagemDoPA(pa, gramatura) {
+  if (gramatura === 'drip') return pa?.embalagemDripId ?? null
+  if (Number(gramatura) === 200) return pa?.embalagem200Id ?? null
   if (Number(gramatura) === 250) return pa?.embalagem250Id ?? null
   if (Number(gramatura) === 1000) return pa?.embalagem1000Id ?? null
   return null

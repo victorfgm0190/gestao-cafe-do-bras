@@ -30,7 +30,13 @@ function nomeLimpo(nome) {
   return String(nome || '').split('Grão:')[0].trim()
 }
 
-const GRAMATURAS_PADRAO = [250, 1000]
+const GRAMATURAS_PADRAO = [200, 250, 1000, 'drip']
+
+// IDs fixos das embalagens padrão no cadastro de insumos.
+const EMBALAGEM_200_ID = 7
+const EMBALAGEM_250_ID = 1
+const EMBALAGEM_1000_ID = 2
+const EMBALAGEM_DRIP_ID = 6
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
@@ -41,6 +47,10 @@ export default async function handler(req, res) {
     // Migração idempotente: cria se não existir e converte para bigint se já existir como integer.
     await sql`ALTER TABLE pa_cadastro ADD COLUMN IF NOT EXISTS bling_id bigint`
     await sql`ALTER TABLE pa_cadastro ALTER COLUMN bling_id TYPE bigint`
+
+    // Colunas das embalagens 200g e Drip (migração idempotente).
+    await sql`ALTER TABLE pa_cadastro ADD COLUMN IF NOT EXISTS embalagem_200_id integer`
+    await sql`ALTER TABLE pa_cadastro ADD COLUMN IF NOT EXISTS embalagem_drip_id integer`
 
     const produtos = await buscarTodosProdutos()
     // Só os produtos PAI (sem variação): nome não contém "Grão:".
@@ -59,8 +69,10 @@ export default async function handler(req, res) {
           UPDATE pa_cadastro
              SET nome = ${nome},
                  gramaturas = ${JSON.stringify(GRAMATURAS_PADRAO)}::jsonb,
-                 embalagem_250_id = 1,
-                 embalagem_1000_id = 2,
+                 embalagem_200_id = ${EMBALAGEM_200_ID},
+                 embalagem_250_id = ${EMBALAGEM_250_ID},
+                 embalagem_1000_id = ${EMBALAGEM_1000_ID},
+                 embalagem_drip_id = ${EMBALAGEM_DRIP_ID},
                  perda_torra_padrao = 10,
                  ativo = true
            WHERE bling_id = ${blingId}
@@ -69,8 +81,11 @@ export default async function handler(req, res) {
       } else {
         await sql`
           INSERT INTO pa_cadastro
-            (nome, bling_id, gramaturas, embalagem_250_id, embalagem_1000_id, perda_torra_padrao, ativo)
-          VALUES (${nome}, ${blingId}, ${JSON.stringify(GRAMATURAS_PADRAO)}::jsonb, 1, 2, 10, true)
+            (nome, bling_id, gramaturas, embalagem_200_id, embalagem_250_id, embalagem_1000_id,
+             embalagem_drip_id, perda_torra_padrao, ativo)
+          VALUES (${nome}, ${blingId}, ${JSON.stringify(GRAMATURAS_PADRAO)}::jsonb,
+                  ${EMBALAGEM_200_ID}, ${EMBALAGEM_250_ID}, ${EMBALAGEM_1000_ID}, ${EMBALAGEM_DRIP_ID},
+                  10, true)
         `
         inseridos++
       }
