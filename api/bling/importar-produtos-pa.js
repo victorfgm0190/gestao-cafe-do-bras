@@ -37,8 +37,10 @@ export default async function handler(req, res) {
   if (!garantirMetodo(req, res, 'GET')) return
 
   try {
-    // Garante a coluna bling_id (migração idempotente).
-    await sql`ALTER TABLE pa_cadastro ADD COLUMN IF NOT EXISTS bling_id integer`
+    // Garante a coluna bling_id como bigint (o id do Bling estoura o range de integer).
+    // Migração idempotente: cria se não existir e converte para bigint se já existir como integer.
+    await sql`ALTER TABLE pa_cadastro ADD COLUMN IF NOT EXISTS bling_id bigint`
+    await sql`ALTER TABLE pa_cadastro ALTER COLUMN bling_id TYPE bigint`
 
     const produtos = await buscarTodosProdutos()
     // Só os produtos PAI (sem variação): nome não contém "Grão:".
