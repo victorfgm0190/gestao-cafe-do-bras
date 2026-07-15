@@ -104,6 +104,20 @@ export async function resumoPAEstoque() {
   const d = await getJson('/api/pa/estoque')
   return d.estoque || []
 }
+// Estoque projetado por produto (só PAs com mix_projecao). Cada item traz os
+// mapas estoqueReal/projetadoAdicional/estoqueProjetado por chave de gramatura.
+export async function resumoProjecaoPA() {
+  const d = await getJson('/api/pa/projecao')
+  return (d.projecao || []).map((p) => ({
+    paId: p.pa_id,
+    nome: p.nome || '',
+    estoqueReal: p.estoque_real || {},
+    projetadoAdicional: p.projetado_adicional || {},
+    estoqueProjetado: p.estoque_projetado || {},
+    kgCruDisponivel: num(p.kg_cru_disponivel),
+    kgTorradoDisponivel: num(p.kg_torrado_disponivel),
+  }))
+}
 export async function carregarOrdens() {
   const d = await getJson('/api/pa/ordens')
   return (d.ordens || []).map(mapOrdem)

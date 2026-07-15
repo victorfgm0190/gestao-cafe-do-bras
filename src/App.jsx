@@ -18,6 +18,7 @@ import TorradoSaldo from './pages/estoque/torrado/TorradoSaldo'
 import PACadastro from './pages/estoque/pa/PACadastro'
 import OrdemProducao from './pages/estoque/pa/OrdemProducao'
 import PAEstoque from './pages/estoque/pa/PAEstoque'
+import PAProjecao from './pages/estoque/pa/PAProjecao'
 import HistoricoProducao from './pages/estoque/pa/HistoricoProducao'
 import EstoqueMinimo from './pages/configuracoes/EstoqueMinimo'
 import InventarioIndex from './pages/inventario/InventarioIndex'
@@ -182,6 +183,14 @@ export default function App() {
         element={
           <RotaProtegida>
             <PAEstoque />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/pa/projecao"
+        element={
+          <RotaProtegida>
+            <PAProjecao />
           </RotaProtegida>
         }
       />

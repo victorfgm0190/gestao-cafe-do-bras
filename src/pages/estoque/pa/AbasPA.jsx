@@ -5,6 +5,7 @@ const ABAS = [
   { to: '/estoque/pa', rotulo: 'Produtos (PA)', exato: true },
   { to: '/estoque/pa/ordem', rotulo: 'Ordem de Produção' },
   { to: '/estoque/pa/estoque', rotulo: 'Estoque PA' },
+  { to: '/estoque/pa/projecao', rotulo: 'Projeção' },
   { to: '/estoque/pa/historico', rotulo: 'Histórico' },
 ]
 

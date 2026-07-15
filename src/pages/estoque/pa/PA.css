@@ -316,6 +316,54 @@
   color: var(--texto-sec);
 }
 
+/* Estoque projetado */
+.pa-proj-ajuda {
+  font-size: 13.5px;
+  color: var(--texto-sec);
+  line-height: 1.5;
+  margin: -4px 0 16px;
+  max-width: 760px;
+}
+
+.pa-proj-produto {
+  vertical-align: middle;
+}
+
+.pa-proj-nome {
+  display: block;
+  font-weight: 700;
+  color: var(--verde);
+}
+
+.pa-proj-cru {
+  display: block;
+  font-size: 12px;
+  color: var(--texto-muted);
+  margin-top: 2px;
+}
+
+.pa-proj-add {
+  color: var(--success, #228b54);
+  font-weight: 700;
+}
+
+/* Coluna destaque: total projetado (número enviado ao site) */
+.pa-proj-col {
+  background: rgba(201, 168, 76, 0.12);
+  border-left: 2px solid var(--dourado);
+  border-right: 2px solid var(--dourado);
+}
+
+th.pa-proj-col {
+  color: var(--verde);
+}
+
+td.pa-proj-col strong {
+  color: var(--dourado);
+  font-size: 15px;
+  font-weight: 800;
+}
+
 /* Checkboxes de gramatura */
 .pa-check-grupo {
   display: flex;

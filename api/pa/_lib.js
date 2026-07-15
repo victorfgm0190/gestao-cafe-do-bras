@@ -163,6 +163,116 @@ export async function ajustarEstoquePA({ paId, gramatura, quantidade, descricao,
   return est[0]
 }
 
+// Peso (kg) por gramatura do mix de projeção.
+const PESO_KG_MIX = { 200: 0.2, 250: 0.25, 1000: 1, drip: 0.01 }
+
+// Normaliza uma gramatura (rótulo "250g"/"1kg"/"Drip (10g)", número ou 'drip')
+// para a chave usada no mix ('200' | '250' | '1000' | 'drip').
+function chaveMix(gramatura) {
+  const g = pesoGramas(gramatura)
+  if (g === 10) return 'drip'
+  if (g === 200) return '200'
+  if (g === 250) return '250'
+  if (g === 1000) return '1000'
+  return null
+}
+
+// Estoque projetado por produto: a partir do café cru vinculado (ou todo o
+// disponível), estima quantos pacotes de cada gramatura o mix produziria e soma
+// ao estoque real. A sobra de kg após o floor de cada gramatura é consolidada na
+// gramatura de maior peso presente no mix (tipicamente 1kg).
+export async function resumoProjecaoPA() {
+  // Garante as colunas do mix (migração idempotente) — a tela de projeção pode
+  // ser o primeiro endpoint acessado após um deploy novo.
+  await sql`ALTER TABLE pa_cadastro ADD COLUMN IF NOT EXISTS mix_projecao jsonb`
+  await sql`ALTER TABLE pa_cadastro ADD COLUMN IF NOT EXISTS cafe_origem_ids jsonb`
+
+  const pas = await sql`
+    SELECT id, nome, mix_projecao, cafe_origem_ids, perda_torra_padrao
+      FROM pa_cadastro
+     WHERE mix_projecao IS NOT NULL
+     ORDER BY nome ASC
+  `
+  if (!pas.length) return []
+
+  const lotes = await sql`
+    SELECT id, saldo_disponivel FROM lotes_cafe_cru WHERE saldo_disponivel > 0
+  `
+  const saldoTotalDisponivel = lotes.reduce((s, l) => s + (Number(l.saldo_disponivel) || 0), 0)
+  const saldoPorLote = {}
+  for (const l of lotes) saldoPorLote[l.id] = Number(l.saldo_disponivel) || 0
+
+  // Estoque real agregado por pa_id → { chaveMix: quantidade }.
+  const estoque = await resumoPAEstoque()
+  const realPorPa = {}
+  for (const e of estoque) {
+    const chave = chaveMix(e.gramatura)
+    if (!chave) continue
+    if (!realPorPa[e.paId]) realPorPa[e.paId] = {}
+    realPorPa[e.paId][chave] = (realPorPa[e.paId][chave] || 0) + (Number(e.quantidade) || 0)
+  }
+
+  return pas.map((pa) => {
+    const mix = pa.mix_projecao && typeof pa.mix_projecao === 'object' ? pa.mix_projecao : {}
+    const origemIds = Array.isArray(pa.cafe_origem_ids) ? pa.cafe_origem_ids : []
+    const perda = Number(pa.perda_torra_padrao) || 0
+
+    // Café cru vinculado (cafe_origem_ids) ou, sem vínculo, todo o disponível.
+    const kgCru = origemIds.length
+      ? origemIds.reduce((s, id) => s + (saldoPorLote[id] || 0), 0)
+      : saldoTotalDisponivel
+    const kgTorrado = kgCru * (1 - perda / 100)
+
+    // Gramaturas do mix com percentual > 0.
+    const chavesMix = ['200', '250', '1000', 'drip'].filter((k) => (Number(mix[k]) || 0) > 0)
+    // Alvo da sobra: maior peso entre as gramaturas do mix.
+    const alvoSobra = chavesMix.reduce(
+      (melhor, k) => (melhor === null || PESO_KG_MIX[k] > PESO_KG_MIX[melhor] ? k : melhor),
+      null,
+    )
+
+    // 1ª passada: gramaturas que NÃO recebem a sobra.
+    const projetado = {}
+    let sobraKg = 0
+    for (const k of chavesMix) {
+      if (k === alvoSobra) continue
+      const kgGramatura = kgTorrado * ((Number(mix[k]) || 0) / 100)
+      const pacotes = Math.floor(kgGramatura / PESO_KG_MIX[k])
+      projetado[k] = pacotes
+      sobraKg += kgGramatura - pacotes * PESO_KG_MIX[k]
+    }
+    // 2ª passada: gramatura de maior peso recebe sua fração + toda a sobra.
+    if (alvoSobra) {
+      const kgAlvo = kgTorrado * ((Number(mix[alvoSobra]) || 0) / 100) + sobraKg
+      projetado[alvoSobra] = Math.floor(kgAlvo / PESO_KG_MIX[alvoSobra])
+    }
+
+    // Une gramaturas do mix e do estoque real para montar os mapas de saída.
+    const real = realPorPa[pa.id] || {}
+    const chaves = [...new Set([...chavesMix, ...Object.keys(real)])]
+    const estoqueReal = {}
+    const projetadoAdicional = {}
+    const estoqueProjetado = {}
+    for (const k of chaves) {
+      const r = real[k] || 0
+      const p = projetado[k] || 0
+      estoqueReal[k] = r
+      projetadoAdicional[k] = p
+      estoqueProjetado[k] = r + p
+    }
+
+    return {
+      pa_id: pa.id,
+      nome: pa.nome,
+      estoque_real: estoqueReal,
+      projetado_adicional: projetadoAdicional,
+      estoque_projetado: estoqueProjetado,
+      kg_cru_disponivel: kgCru,
+      kg_torrado_disponivel: kgTorrado,
+    }
+  })
+}
+
 // Estoque de PA agregado por produto + gramatura (custo médio ponderado).
 export async function resumoPAEstoque() {
   const registros = await sql`SELECT pa_id, gramatura, quantidade, custo_total FROM pa_estoque`
