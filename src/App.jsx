@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import ContasPagar from './pages/financeiro/ContasPagar'
 import EstoqueIndex from './pages/estoque/EstoqueIndex'
 import EntradaCafe from './pages/estoque/EntradaCafe'
+import CafeCruCadastro from './pages/estoque/CafeCruCadastro'
 import KardexCafeCru from './pages/estoque/KardexCafeCru'
 import SaldoCafeCru from './pages/estoque/SaldoCafeCru'
 import InsumosCadastro from './pages/estoque/insumos/InsumosCadastro'
@@ -79,6 +80,14 @@ export default function App() {
         element={
           <RotaProtegida>
             <EstoqueIndex />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/estoque/cafes"
+        element={
+          <RotaProtegida>
+            <CafeCruCadastro />
           </RotaProtegida>
         }
       />

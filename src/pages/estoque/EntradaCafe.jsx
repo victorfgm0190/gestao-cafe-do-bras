@@ -12,6 +12,7 @@ import {
   excluirLoteCru,
   atualizarSaldoLote,
 } from '../../utils/lotesCru'
+import { carregarCafesCru } from '../../utils/cafesCru'
 import { recalcularOrdensDoGrupo } from '../../utils/cascata'
 import RelatorioImpacto from '../../components/RelatorioImpacto'
 import './EntradaCafe.css'
@@ -55,6 +56,8 @@ function calcularPeso(form) {
 
 export default function EntradaCafe() {
   const [lotes, setLotes] = useState([])
+  const [cafes, setCafes] = useState([])
+  const [cafeSelId, setCafeSelId] = useState('')
   const [busca, setBusca] = useState('')
   const [modalAberto, setModalAberto] = useState(false)
   const [editandoId, setEditandoId] = useState(null)
@@ -70,6 +73,44 @@ export default function EntradaCafe() {
   useEffect(() => {
     recarregar()
   }, [])
+  // Cafés cadastrados alimentam o select de produtor (fallback: texto livre).
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      try {
+        const lista = await carregarCafesCru()
+        if (vivo) setCafes(lista)
+      } catch {
+        if (vivo) setCafes([])
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
+
+  // Casa o produtor/variedade de um lote com um café cadastrado (para o select).
+  function acharCafeId(produtor, variedade) {
+    const c = cafes.find(
+      (x) => x.fazenda === (produtor || '') && x.variedade === (variedade || ''),
+    )
+    return c ? String(c.id) : ''
+  }
+
+  // Seleção de café cadastrado → preenche produtor, variedade e processo.
+  function selecionarCafe(val) {
+    setCafeSelId(val)
+    if (!val) return
+    const c = cafes.find((x) => String(x.id) === String(val))
+    if (c) {
+      setForm((f) => ({
+        ...f,
+        produtor: c.fazenda,
+        variedade: c.variedade,
+        processo: PROCESSOS.includes(c.processo) ? c.processo : f.processo,
+      }))
+    }
+  }
 
   const lotesFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase()
@@ -109,12 +150,14 @@ export default function EntradaCafe() {
   function abrirNova() {
     setEditandoId(null)
     setForm(FORM_VAZIO)
+    setCafeSelId('')
     setErros({})
     setModalAberto(true)
   }
 
   function abrirEdicao(lote) {
     setEditandoId(lote.id)
+    setCafeSelId(acharCafeId(lote.produtor, lote.variedade))
     setForm({
       tipoEntrada: lote.tipoEntrada,
       sacas: lote.tipoEntrada === 'saca' ? String(lote.sacas) : '1',
@@ -492,18 +535,42 @@ export default function EntradaCafe() {
                   </label>
                 </div>
 
-                <label className="campo">
-                  <span className="campo-label">
-                    Produtor / fazenda <span className="obrig">*</span>
-                  </span>
-                  <input
-                    type="text"
-                    value={form.produtor}
-                    onChange={(e) => atualizarCampo('produtor', e.target.value)}
-                    placeholder="Ex.: Fazenda Serra Verde"
-                  />
-                  {erros.produtor && <span className="campo-erro">{erros.produtor}</span>}
-                </label>
+                {cafes.length > 0 ? (
+                  <label className="campo">
+                    <span className="campo-label">
+                      Produtor / fazenda <span className="obrig">*</span>
+                    </span>
+                    <select value={cafeSelId} onChange={(e) => selecionarCafe(e.target.value)}>
+                      <option value="">Selecione o café cadastrado…</option>
+                      {cafes.map((c) => (
+                        <option key={c.id} value={String(c.id)}>
+                          {c.fazenda} — {c.variedade}
+                          {c.processo ? ` (${c.processo})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {editandoId && !cafeSelId && form.produtor && (
+                      <span className="campo-ajuda">
+                        Produtor atual: <strong>{form.produtor}</strong> (não cadastrado). Selecione um café
+                        para atualizar.
+                      </span>
+                    )}
+                    {erros.produtor && <span className="campo-erro">{erros.produtor}</span>}
+                  </label>
+                ) : (
+                  <label className="campo">
+                    <span className="campo-label">
+                      Produtor / fazenda <span className="obrig">*</span>
+                    </span>
+                    <input
+                      type="text"
+                      value={form.produtor}
+                      onChange={(e) => atualizarCampo('produtor', e.target.value)}
+                      placeholder="Ex.: Fazenda Serra Verde"
+                    />
+                    {erros.produtor && <span className="campo-erro">{erros.produtor}</span>}
+                  </label>
+                )}
 
                 <div className="ec-form-linha">
                   <label className="campo">

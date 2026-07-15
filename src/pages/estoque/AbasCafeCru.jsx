@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import './CafeCru.css'
 
 const ABAS = [
+  { to: '/estoque/cafes', rotulo: 'Cafés (MP)' },
   { to: '/estoque/entrada-cafe', rotulo: 'Entrada' },
   { to: '/estoque/kardex', rotulo: 'Kardex' },
   { to: '/estoque/saldo', rotulo: 'Saldo atual' },

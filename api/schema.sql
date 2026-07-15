@@ -95,6 +95,23 @@ CREATE INDEX IF NOT EXISTS idx_lotes_cru_grupo ON lotes_cafe_cru (fazenda, varie
 
 
 -- ============================================================================
+-- CAFÉ CRU (MP) — CADASTRO FORMAL DE CAFÉS
+-- Origem: cafes_cru_cadastro (CafeCruCadastro.jsx). Catálogo canônico de
+-- fazenda + variedade + processo, usado para padronizar a Entrada de café cru
+-- e vincular cafés a produtos acabados (pa_ids).
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS cafes_cru_cadastro (
+  id SERIAL PRIMARY KEY,
+  fazenda TEXT NOT NULL,
+  variedade TEXT NOT NULL,
+  processo TEXT NOT NULL DEFAULT 'Natural',   -- Natural | Lavado | Honey
+  pa_ids JSONB,                               -- array de pa_cadastro.id vinculados (opcional)
+  ativo BOOLEAN NOT NULL DEFAULT true,
+  criado_em TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- ============================================================================
 -- CAFÉ CRU (MP) — KARDEX (ledger)
 -- Origem: kardex_cafe_cru (kardex.js). Custo médio corrido DENTRO de cada
 -- grupo (fazenda + variedade). quantidade tem sinal (+ entra / - sai).
