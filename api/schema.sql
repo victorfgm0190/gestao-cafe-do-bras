@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS cafes_cru_cadastro (
   id SERIAL PRIMARY KEY,
   fazenda TEXT NOT NULL,
   variedade TEXT NOT NULL,
-  processo TEXT NOT NULL DEFAULT 'Natural',   -- Natural | Lavado | Honey
+  processo TEXT NOT NULL DEFAULT 'Natural (Via Seca)',   -- lista oficial em api/cafe-cru/cadastro.js (PROCESSOS)
   pa_ids JSONB,                               -- array de pa_cadastro.id vinculados (opcional)
   ativo BOOLEAN NOT NULL DEFAULT true,
   criado_em TIMESTAMPTZ DEFAULT NOW()

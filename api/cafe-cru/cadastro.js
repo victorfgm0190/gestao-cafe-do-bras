@@ -4,7 +4,35 @@
 import { sql } from '../db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from '../_http.js'
 
-export const PROCESSOS = ['Natural', 'Lavado', 'Honey']
+// Lista oficial de processos de café cru. O default é o primeiro item.
+export const PROCESSOS = [
+  'Natural (Via Seca)',
+  'Cereja Descascado (CD / Pulped Natural)',
+  'Honey White',
+  'Honey Yellow',
+  'Honey Red',
+  'Honey Black',
+  'Lavado (Washed)',
+  'Semi-Lavado (Semi Washed)',
+  'Wet Hulled (Giling Basah)',
+  'Anaeróbico (Anaerobic Fermentation)',
+  'Maceração Carbônica (Carbonic Maceration)',
+  'Fermentação Aeróbica',
+  'Fermentação Induzida por Leveduras (Yeast Fermentation)',
+  'Fermentação Lática (Lactic Fermentation)',
+  'Fermentação Prolongada (Extended Fermentation)',
+  'Co-fermentado (Co-fermented)',
+  'Fermentação Enzimática (Enzymatic Fermentation)',
+  'Double Fermentation (Dupla Fermentação)',
+  'Natural Anaeróbico',
+  'Honey Anaeróbico',
+  'Lavado Anaeróbico',
+  'Frozen Cherry (Cereja Congelada)',
+  'Cryo Process (Processamento Criogênico)',
+  'Infused Coffee (Café Infusionado)',
+  'Experimental Process (Processamento Experimental)',
+]
+export const PROCESSO_PADRAO = PROCESSOS[0]
 
 // Cria a tabela do cadastro se ainda não existir (migração idempotente).
 export async function garantirTabelaCafes() {
@@ -48,7 +76,7 @@ export default async function handler(req, res) {
     const variedade = String(b.variedade || '').trim()
     if (!fazenda) return enviarErro(res, 400, 'Informe a fazenda.')
     if (!variedade) return enviarErro(res, 400, 'Informe a variedade.')
-    const processo = PROCESSOS.includes(b.processo) ? b.processo : 'Natural'
+    const processo = PROCESSOS.includes(b.processo) ? b.processo : PROCESSO_PADRAO
     const paIds = normalizarPaIds(b.paIds)
     const ativo = b.ativo !== undefined ? !!b.ativo : true
 

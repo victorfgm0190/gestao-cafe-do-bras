@@ -3,7 +3,35 @@
 
 import { getJson, sendJson } from './api'
 
-export const PROCESSOS_CAFE = ['Natural', 'Lavado', 'Honey']
+// Lista oficial de processos de café cru. O default é o primeiro item.
+export const PROCESSOS_CAFE = [
+  'Natural (Via Seca)',
+  'Cereja Descascado (CD / Pulped Natural)',
+  'Honey White',
+  'Honey Yellow',
+  'Honey Red',
+  'Honey Black',
+  'Lavado (Washed)',
+  'Semi-Lavado (Semi Washed)',
+  'Wet Hulled (Giling Basah)',
+  'Anaeróbico (Anaerobic Fermentation)',
+  'Maceração Carbônica (Carbonic Maceration)',
+  'Fermentação Aeróbica',
+  'Fermentação Induzida por Leveduras (Yeast Fermentation)',
+  'Fermentação Lática (Lactic Fermentation)',
+  'Fermentação Prolongada (Extended Fermentation)',
+  'Co-fermentado (Co-fermented)',
+  'Fermentação Enzimática (Enzymatic Fermentation)',
+  'Double Fermentation (Dupla Fermentação)',
+  'Natural Anaeróbico',
+  'Honey Anaeróbico',
+  'Lavado Anaeróbico',
+  'Frozen Cherry (Cereja Congelada)',
+  'Cryo Process (Processamento Criogênico)',
+  'Infused Coffee (Café Infusionado)',
+  'Experimental Process (Processamento Experimental)',
+]
+export const PROCESSO_PADRAO = PROCESSOS_CAFE[0]
 
 // API (snake_case) → app (camelCase).
 export function mapCafeCru(r) {

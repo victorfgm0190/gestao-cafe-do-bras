@@ -12,7 +12,7 @@ import {
   excluirLoteCru,
   atualizarSaldoLote,
 } from '../../utils/lotesCru'
-import { carregarCafesCru } from '../../utils/cafesCru'
+import { carregarCafesCru, PROCESSOS_CAFE, PROCESSO_PADRAO } from '../../utils/cafesCru'
 import { recalcularOrdensDoGrupo } from '../../utils/cascata'
 import RelatorioImpacto from '../../components/RelatorioImpacto'
 import './EntradaCafe.css'
@@ -20,7 +20,6 @@ import './EntradaCafe.css'
 const KG_POR_SACA = 60
 
 const TIPOS_CAFE = ['Arábica', 'Canephora (Robusta)', 'Blend']
-const PROCESSOS = ['Natural', 'Lavado', 'Honey', 'Cereja Descascado']
 const DEPOSITOS = ['Depósito Principal']
 
 const FORM_VAZIO = {
@@ -32,7 +31,7 @@ const FORM_VAZIO = {
   cidade: '',
   estado: '',
   variedade: '',
-  processo: 'Natural',
+  processo: PROCESSO_PADRAO,
   safra: String(new Date().getFullYear()),
   qualidade: '',
   umidade: '',
@@ -107,7 +106,7 @@ export default function EntradaCafe() {
         ...f,
         produtor: c.fazenda,
         variedade: c.variedade,
-        processo: PROCESSOS.includes(c.processo) ? c.processo : f.processo,
+        processo: PROCESSOS_CAFE.includes(c.processo) ? c.processo : f.processo,
       }))
     }
   }
@@ -526,7 +525,7 @@ export default function EntradaCafe() {
                       value={form.processo}
                       onChange={(e) => atualizarCampo('processo', e.target.value)}
                     >
-                      {PROCESSOS.map((p) => (
+                      {PROCESSOS_CAFE.map((p) => (
                         <option key={p} value={p}>
                           {p}
                         </option>

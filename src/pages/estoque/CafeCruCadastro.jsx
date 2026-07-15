@@ -10,6 +10,7 @@ import {
   editarCafeCru,
   inativarCafeCru,
   PROCESSOS_CAFE,
+  PROCESSO_PADRAO,
 } from '../../utils/cafesCru'
 import { carregarPA } from '../../utils/pa'
 import './CafeCru.css'
@@ -17,7 +18,7 @@ import './CafeCru.css'
 const FORM_VAZIO = {
   fazenda: '',
   variedade: '',
-  processo: 'Natural',
+  processo: PROCESSO_PADRAO,
   paIds: [],
   ativo: true,
 }
@@ -67,7 +68,7 @@ export default function CafeCruCadastro() {
     setForm({
       fazenda: cafe.fazenda,
       variedade: cafe.variedade,
-      processo: PROCESSOS_CAFE.includes(cafe.processo) ? cafe.processo : 'Natural',
+      processo: PROCESSOS_CAFE.includes(cafe.processo) ? cafe.processo : PROCESSO_PADRAO,
       paIds: [...(cafe.paIds || [])],
       ativo: cafe.ativo !== false,
     })
