@@ -5,6 +5,8 @@ import { sql } from '../db.js'
 import { resumoTorrado } from '../torrado/_lib.js'
 import { resumoPAEstoque, formatarGramatura } from '../pa/_lib.js'
 import { resumoPorInsumo } from '../insumos/_lib.js'
+import { chaveGrupo } from '../cafe-cru/_lib.js'
+import { garantirTabelaCafes } from '../cafe-cru/cadastro.js'
 
 export const TIPOS_INVENTARIO = ['Diário', 'Semanal', 'Mensal']
 
@@ -27,9 +29,11 @@ export function calcularItem(base) {
 export async function gerarItensSistema() {
   const itens = []
 
-  // Café cru (por lote com saldo)
-  const lotes = await sql`SELECT * FROM lotes_cafe_cru WHERE saldo_disponivel > 0 ORDER BY id ASC`
+  // Café cru — TODOS os lotes existentes (mesmo com saldo zero), por lote.
+  const lotes = await sql`SELECT * FROM lotes_cafe_cru ORDER BY id ASC`
+  const gruposComLote = new Set()
   for (const l of lotes) {
+    gruposComLote.add(chaveGrupo(l.fazenda, l.variedade))
     itens.push(
       calcularItem({
         categoria: CATEGORIAS.CRU,
@@ -44,6 +48,34 @@ export async function gerarItensSistema() {
         loteCodigo: l.codigo_lote || '',
         produtor: l.fazenda || '',
         variedade: l.variedade || '',
+      }),
+    )
+  }
+
+  // Cafés cadastrados (ativos) SEM nenhum lote → linha com saldo 0, depois dos lotes.
+  await garantirTabelaCafes()
+  const cafes = await sql`
+    SELECT * FROM cafes_cru_cadastro WHERE ativo = true ORDER BY fazenda ASC, variedade ASC
+  `
+  for (const c of cafes) {
+    if (gruposComLote.has(chaveGrupo(c.fazenda, c.variedade))) continue
+    const rotulo = `Sem lotes — ${c.fazenda || '—'} / ${c.variedade || '—'}`
+    itens.push(
+      calcularItem({
+        categoria: CATEGORIAS.CRU,
+        referencia: rotulo,
+        descricao: rotulo,
+        unidade: 'kg',
+        saldoSistema: 0,
+        saldoFisico: null,
+        regularizado: false,
+        regularizacao: null,
+        loteId: null,
+        loteCodigo: '',
+        cafeId: c.id,
+        produtor: c.fazenda || '',
+        variedade: c.variedade || '',
+        semLotes: true,
       }),
     )
   }
