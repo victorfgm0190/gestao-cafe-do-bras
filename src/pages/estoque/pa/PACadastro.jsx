@@ -16,11 +16,32 @@ import {
 import '../CafeCru.css'
 import './PA.css'
 
+// Gramaturas do mix de projeção (percentuais que devem somar 100).
+const MIX_CAMPOS = [
+  { chave: '200', rotulo: '200g' },
+  { chave: '250', rotulo: '250g' },
+  { chave: '1000', rotulo: '1kg' },
+  { chave: 'drip', rotulo: 'Drip' },
+]
+
+const MIX_VAZIO = { 200: '', 250: '', 1000: '', drip: '' }
+
 const FORM_VAZIO = {
   nome: '',
   gramaturas: [250, 1000],
   perdaTorraPadrao: '10',
   ativo: true,
+  mix: { ...MIX_VAZIO },
+}
+
+// Soma dos percentuais do mix (campos vazios contam como 0).
+function somaMix(mix) {
+  return MIX_CAMPOS.reduce((acc, { chave }) => acc + (Number(String(mix[chave]).replace(',', '.')) || 0), 0)
+}
+
+// Percentual sem casas decimais desnecessárias (85 → "85", 33.3 → "33.3").
+function formatarPct(n) {
+  return Number(n.toFixed(2)).toString()
 }
 
 export default function PACadastro() {
@@ -57,12 +78,20 @@ export default function PACadastro() {
   }
 
   function abrirEdicao(pa) {
+    const mix = { ...MIX_VAZIO }
+    if (pa.mixProjecao && typeof pa.mixProjecao === 'object') {
+      for (const { chave } of MIX_CAMPOS) {
+        const v = pa.mixProjecao[chave]
+        mix[chave] = v != null && v !== 0 ? String(v) : ''
+      }
+    }
     setEditandoId(pa.id)
     setForm({
       nome: pa.nome,
       gramaturas: [...(pa.gramaturas || [])],
       perdaTorraPadrao: String(pa.perdaTorraPadrao ?? 10),
       ativo: pa.ativo !== false,
+      mix,
     })
     setErros({})
     setModalAberto(true)
@@ -76,10 +105,19 @@ export default function PACadastro() {
     })
   }
 
+  function setMixCampo(chave, valor) {
+    setForm((f) => ({ ...f, mix: { ...f.mix, [chave]: valor } }))
+  }
+
   function validar() {
     const e = {}
     if (!form.nome.trim()) e.nome = 'Informe o nome do produto.'
     if (form.gramaturas.length === 0) e.gramaturas = 'Selecione ao menos uma gramatura.'
+    // Mix é opcional; mas se preenchido (soma > 0) precisa somar exatamente 100%.
+    const total = somaMix(form.mix)
+    if (total > 0 && Math.round(total * 100) !== 10000) {
+      e.mix = `A soma do mix deve ser exatamente 100%. Total atual: ${formatarPct(total)}%.`
+    }
     setErros(e)
     return Object.keys(e).length === 0
   }
@@ -87,6 +125,16 @@ export default function PACadastro() {
   async function salvar(e) {
     e.preventDefault()
     if (!validar()) return
+
+    // Só envia o mix quando configurado (soma 100%); caso contrário, null.
+    const totalMix = somaMix(form.mix)
+    const mixProjecao =
+      totalMix > 0
+        ? MIX_CAMPOS.reduce((acc, { chave }) => {
+            acc[chave] = Number(String(form.mix[chave]).replace(',', '.')) || 0
+            return acc
+          }, {})
+        : null
 
     const { embalagem250Id, embalagem1000Id } = embalagens
     const dados = {
@@ -96,6 +144,7 @@ export default function PACadastro() {
       embalagem1000Id,
       perdaTorraPadrao: Number(String(form.perdaTorraPadrao).replace(',', '.')) || 0,
       ativo: form.ativo,
+      mixProjecao,
     }
 
     const autor = nomeUsuarioAtual()
@@ -244,6 +293,50 @@ export default function PACadastro() {
                   Usada para sugerir o café cru necessário na ordem de produção.
                 </span>
               </label>
+
+              <div className="campo">
+                <span className="campo-label">Mix de projeção (%)</span>
+                <span className="campo-ajuda">
+                  Distribuição projetada da produção por gramatura. A soma deve ser exatamente 100%.
+                </span>
+                <div className="pa-mix-grid">
+                  {MIX_CAMPOS.map(({ chave, rotulo }) => (
+                    <div key={chave} className="pa-mix-card">
+                      <span className="pa-mix-nome">{rotulo}</span>
+                      <div className="pa-mix-input">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={form.mix[chave]}
+                          onChange={(ev) => setMixCampo(chave, ev.target.value)}
+                          placeholder="0"
+                        />
+                        <span className="pa-mix-simbolo">%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {(() => {
+                  const total = somaMix(form.mix)
+                  const ok = Math.round(total * 100) === 10000
+                  const zero = total === 0
+                  const faltam = 100 - total
+                  return (
+                    <div className={`pa-mix-total ${ok ? 'ok' : zero ? 'neutro' : 'alerta'}`}>
+                      {zero
+                        ? 'Total: 0% — mix opcional, preencha se quiser projetar.'
+                        : ok
+                          ? 'Total: 100% ✓'
+                          : `Total: ${formatarPct(total)}% — ${
+                              faltam > 0 ? `faltam ${formatarPct(faltam)}%` : `excede ${formatarPct(-faltam)}%`
+                            }`}
+                    </div>
+                  )
+                })()}
+                {erros.mix && <span className="campo-erro">{erros.mix}</span>}
+              </div>
 
               <label className="pa-check">
                 <input

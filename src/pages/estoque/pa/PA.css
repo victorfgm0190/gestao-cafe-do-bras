@@ -237,6 +237,85 @@
   margin-top: 18px;
 }
 
+/* Mix de projeção (%) por gramatura — cadastro do PA */
+.pa-mix-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.pa-mix-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--creme);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.pa-mix-nome {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--verde);
+}
+
+.pa-mix-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--branco);
+  border: 1px solid var(--creme-escuro);
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
+}
+
+.pa-mix-input:focus-within {
+  border-color: var(--dourado);
+}
+
+.pa-mix-input input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 10px 0;
+  font-size: 14px;
+  width: 100%;
+  min-width: 0;
+}
+
+.pa-mix-simbolo {
+  font-weight: 700;
+  color: var(--texto-muted);
+}
+
+.pa-mix-total {
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.pa-mix-total.ok {
+  background: rgba(34, 139, 84, 0.10);
+  border: 1px solid rgba(34, 139, 84, 0.35);
+  color: var(--verde);
+}
+
+.pa-mix-total.alerta {
+  background: rgba(201, 168, 76, 0.14);
+  border: 1px solid rgba(201, 168, 76, 0.45);
+  color: #8a6d1f;
+}
+
+.pa-mix-total.neutro {
+  background: var(--creme);
+  border: 1px solid var(--creme-escuro);
+  color: var(--texto-sec);
+}
+
 /* Checkboxes de gramatura */
 .pa-check-grupo {
   display: flex;

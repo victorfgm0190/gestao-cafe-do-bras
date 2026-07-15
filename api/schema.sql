@@ -229,6 +229,10 @@ CREATE TABLE IF NOT EXISTS pa_cadastro (
 );
 -- Perda de torra padrão (%) por produto — sugere o café cru na ordem de produção.
 ALTER TABLE pa_cadastro ADD COLUMN IF NOT EXISTS perda_torra_padrao DECIMAL(6,2) NOT NULL DEFAULT 10;
+-- Mix de projeção (%) por gramatura — ex.: {"200":10,"250":60,"1000":20,"drip":10} (soma 100).
+ALTER TABLE pa_cadastro ADD COLUMN IF NOT EXISTS mix_projecao JSONB;
+-- Origem do café: ids dos lotes/fazendas vinculados ao produto — ex.: [1, 3].
+ALTER TABLE pa_cadastro ADD COLUMN IF NOT EXISTS cafe_origem_ids JSONB;
 
 
 -- ============================================================================

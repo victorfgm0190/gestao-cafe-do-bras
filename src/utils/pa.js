@@ -42,6 +42,8 @@ const mapPA = (r) =>
     embalagemDripId: r.embalagem_drip_id ?? null,
     ativo: r.ativo,
     perdaTorraPadrao: r.perda_torra_padrao != null ? num(r.perda_torra_padrao) : 10,
+    mixProjecao: r.mix_projecao && typeof r.mix_projecao === 'object' ? r.mix_projecao : null,
+    cafeOrigemIds: Array.isArray(r.cafe_origem_ids) ? r.cafe_origem_ids : [],
   }
 const mapOrdem = (o) =>
   o && {
