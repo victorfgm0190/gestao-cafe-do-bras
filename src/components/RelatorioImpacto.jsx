@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { formatarMoeda, formatarData } from '../utils/formato'
+import { formatarGramatura } from '../utils/pa'
 import './RelatorioImpacto.css'
 
 function rotuloTipo(mov) {
@@ -67,7 +68,7 @@ export default function RelatorioImpacto({ rel, onFechar }) {
                   <ul className="ri-sublista">
                     {o.itens.map((it) => (
                       <li key={it.gramatura}>
-                        {it.quantidade}× {it.gramatura === 1000 ? '1kg' : `${it.gramatura}g`}: custo/pacote{' '}
+                        {it.quantidade}× {formatarGramatura(it.gramatura)}: custo/pacote{' '}
                         {formatarMoeda(it.custoUnitarioAntes)} →{' '}
                         <strong>{formatarMoeda(it.custoUnitarioDepois)}</strong>
                       </li>

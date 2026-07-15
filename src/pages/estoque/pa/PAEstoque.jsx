@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import Topbar from '../../../components/Topbar'
 import AbasPA from './AbasPA'
 import { formatarMoeda } from '../../../utils/formato'
-import { resumoPAEstoque, formatarGramatura } from '../../../utils/pa'
+import { resumoPAEstoque, formatarGramatura, pesoGramas } from '../../../utils/pa'
 import '../CafeCru.css'
 import './PA.css'
 
@@ -15,7 +15,7 @@ export default function PAEstoque() {
     ;(async () => {
       const dados = await resumoPAEstoque()
       const ordenado = [...dados].sort(
-        (a, b) => (a.paNome || '').localeCompare(b.paNome || '') || a.gramatura - b.gramatura,
+        (a, b) => (a.paNome || '').localeCompare(b.paNome || '') || pesoGramas(a.gramatura) - pesoGramas(b.gramatura),
       )
       if (vivo) setLinhas(ordenado)
     })()

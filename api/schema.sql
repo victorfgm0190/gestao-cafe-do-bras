@@ -238,7 +238,7 @@ ALTER TABLE pa_cadastro ADD COLUMN IF NOT EXISTS perda_torra_padrao DECIMAL(6,2)
 CREATE TABLE IF NOT EXISTS pa_estoque (
   id SERIAL PRIMARY KEY,
   pa_id INTEGER REFERENCES pa_cadastro(id) ON DELETE SET NULL,
-  gramatura INTEGER NOT NULL,                -- 200 | 250 | 1000
+  gramatura TEXT NOT NULL,                   -- rótulo: "200g" | "250g" | "1kg" | "Drip (10g)"
   quantidade DECIMAL(14,3) NOT NULL,         -- pacotes (pode ser negativo em ajuste)
   custo_unitario DECIMAL(14,4),              -- por pacote (café + embalagem)
   custo_total DECIMAL(14,2),
@@ -247,6 +247,8 @@ CREATE TABLE IF NOT EXISTS pa_estoque (
   origem VARCHAR(20),                        -- 'inventario' nos ajustes; null nas produções
   criado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
+-- Migração: gramatura de INTEGER → TEXT (preserva o rótulo, ex.: "Drip (10g)"). Idempotente.
+ALTER TABLE pa_estoque ALTER COLUMN gramatura TYPE text;
 CREATE INDEX IF NOT EXISTS idx_pa_estoque_pa ON pa_estoque (pa_id, gramatura);
 
 
@@ -262,13 +264,15 @@ CREATE TABLE IF NOT EXISTS pa_movimentacoes (
   tipo VARCHAR(20) NOT NULL,                 -- Entrada (produção) | Saída/Ajuste (inventário)
   pa_id INTEGER REFERENCES pa_cadastro(id) ON DELETE SET NULL,
   pa_nome VARCHAR(120),
-  gramatura INTEGER NOT NULL,
+  gramatura TEXT NOT NULL,                   -- rótulo: "200g" | "250g" | "1kg" | "Drip (10g)"
   quantidade DECIMAL(14,3) NOT NULL,         -- com sinal
   custo_unitario DECIMAL(14,4),
   custo_total DECIMAL(14,2),
   descricao TEXT,
   criado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
+-- Migração: gramatura de INTEGER → TEXT (preserva o rótulo, ex.: "Drip (10g)"). Idempotente.
+ALTER TABLE pa_movimentacoes ALTER COLUMN gramatura TYPE text;
 CREATE INDEX IF NOT EXISTS idx_pa_mov_pa ON pa_movimentacoes (pa_id, gramatura);
 
 

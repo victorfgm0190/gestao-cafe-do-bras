@@ -61,8 +61,11 @@ export async function itensMonitoraveis() {
     minimo: chaveT in cfg ? Number(cfg[chaveT]) || 0 : MIN_TORRADO_PADRAO,
   })
 
+  // Saldo é casado pelo RÓTULO da gramatura (coluna TEXT: "250g", "Drip (10g)"),
+  // mas a chave de config continua pelo identificador (pa:<id>:<250|drip>) para
+  // não invalidar mínimos já salvos.
   const saldoPA = {}
-  for (const r of estoquePA) saldoPA[`${r.paId}:${r.gramatura}`] = r.quantidade
+  for (const r of estoquePA) saldoPA[`${r.paId}:${formatarGramatura(r.gramatura)}`] = r.quantidade
   for (const p of pas) {
     for (const g of p.gramaturas || []) {
       const chave = chavePA(p.id, g)
@@ -71,7 +74,7 @@ export async function itensMonitoraveis() {
         tipo: 'Produto acabado',
         nome: `${p.nome} ${formatarGramatura(g)}`,
         unidade: 'un',
-        saldoAtual: Number(saldoPA[`${p.id}:${g}`]) || 0,
+        saldoAtual: Number(saldoPA[`${p.id}:${formatarGramatura(g)}`]) || 0,
         minimo: chave in cfg ? Number(cfg[chave]) || 0 : 0,
       })
     }

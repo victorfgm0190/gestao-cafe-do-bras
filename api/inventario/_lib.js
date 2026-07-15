@@ -3,7 +3,7 @@
 
 import { sql } from '../db.js'
 import { resumoTorrado } from '../torrado/_lib.js'
-import { resumoPAEstoque } from '../pa/_lib.js'
+import { resumoPAEstoque, formatarGramatura } from '../pa/_lib.js'
 import { resumoPorInsumo } from '../insumos/_lib.js'
 
 export const TIPOS_INVENTARIO = ['Diário', 'Semanal', 'Mensal']
@@ -21,11 +21,6 @@ export function calcularItem(base) {
   const diferenca = saldoFisico - saldoSistema
   const status = diferenca > 1e-9 ? 'sobra' : diferenca < -1e-9 ? 'falta' : 'ok'
   return { ...base, saldoSistema, saldoFisico, diferenca, status }
-}
-
-function formatarGramatura(g) {
-  const n = Number(g) || 0
-  return n === 1000 ? '1kg' : `${n}g`
 }
 
 // Monta os itens a partir dos saldos atuais do sistema (todos os módulos).

@@ -13,14 +13,21 @@ export const GRAMATURAS = [200, 250, 1000, 'drip']
 
 export function formatarGramatura(g) {
   if (g === 'drip') return 'Drip (10g)'
+  // Já vem formatada do banco ("250g", "1kg", "Drip (10g)") → devolve como está.
+  if (typeof g === 'string' && /[a-z]/i.test(g)) return g
   const n = Number(g) || 0
   return n === 1000 ? '1kg' : `${n}g`
 }
 
-// Peso em gramas de uma gramatura. 'drip' = sachê de 10g; demais = o próprio número.
-// Use SEMPRE que a gramatura for usada como número (peso/custo).
+// Peso em gramas de uma gramatura. Aceita número (250), identificador ('drip')
+// e rótulo já formatado ("250g", "1kg", "Drip (10g)"). Use SEMPRE que a gramatura
+// for usada como número (peso/custo/ordenação).
 export function pesoGramas(g) {
-  return g === 'drip' ? 10 : Number(g) || 0
+  if (typeof g === 'number') return g
+  const s = String(g).toLowerCase().trim()
+  if (s.includes('drip')) return 10
+  if (s.endsWith('kg')) return (parseFloat(s) || 0) * 1000
+  return parseFloat(s) || 0
 }
 
 const num = (v) => Number(v) || 0

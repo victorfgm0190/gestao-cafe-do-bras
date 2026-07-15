@@ -24,14 +24,21 @@ const num = (v) => Number(String(v ?? '').replace(',', '.')) || 0
 
 export function formatarGramatura(g) {
   if (g === 'drip') return 'Drip (10g)'
+  // Já vem formatada do banco ("250g", "1kg", "Drip (10g)") → devolve como está.
+  if (typeof g === 'string' && /[a-z]/i.test(g)) return g
   const n = Number(g) || 0
   return n === 1000 ? '1kg' : `${n}g`
 }
 
-// Peso em gramas de uma gramatura. 'drip' é um sachê de 10g; as demais são o
-// próprio número. Use SEMPRE que a gramatura for usada como número (peso/custo).
+// Peso em gramas de uma gramatura. Aceita número (250), identificador ('drip')
+// e rótulo já formatado ("250g", "1kg", "Drip (10g)"). Use SEMPRE que a gramatura
+// for usada como número (peso/custo/ordenação).
 export function pesoGramas(g) {
-  return g === 'drip' ? 10 : Number(g) || 0
+  if (typeof g === 'number') return g
+  const s = String(g).toLowerCase().trim()
+  if (s.includes('drip')) return 10
+  if (s.endsWith('kg')) return (parseFloat(s) || 0) * 1000
+  return parseFloat(s) || 0
 }
 
 // Embalagem vinculada a uma gramatura do PA (linha do banco, snake_case).
@@ -136,19 +143,21 @@ export async function calcularOrdem(input) {
 export async function ajustarEstoquePA({ paId, gramatura, quantidade, descricao, data }) {
   const q = num(quantidade)
   const dataRef = data || new Date().toISOString().slice(0, 10)
+  // A coluna gramatura é TEXT: gravamos/comparamos pelo rótulo ("250g", "Drip (10g)").
+  const rotulo = formatarGramatura(gramatura)
   const resumo = await resumoPAEstoque()
-  const atual = resumo.find((r) => r.paId === Number(paId) && Number(r.gramatura) === Number(gramatura))
+  const atual = resumo.find((r) => r.paId === Number(paId) && formatarGramatura(r.gramatura) === rotulo)
   const custoUnit = atual ? Number(atual.custoMedio) || 0 : 0
 
   const est = await sql`
     INSERT INTO pa_estoque (pa_id, gramatura, quantidade, custo_unitario, custo_total, data, ordem_id, origem)
-    VALUES (${Number(paId)}, ${Number(gramatura)}, ${q}, ${custoUnit}, ${q * custoUnit}, ${dataRef}, NULL, 'inventario')
+    VALUES (${Number(paId)}, ${rotulo}, ${q}, ${custoUnit}, ${q * custoUnit}, ${dataRef}, NULL, 'inventario')
     RETURNING *
   `
   await sql`
     INSERT INTO pa_movimentacoes
       (ordem_id, data, tipo, pa_id, gramatura, quantidade, custo_unitario, custo_total, descricao)
-    VALUES (NULL, ${dataRef}, ${q < 0 ? TIPOS_MOV.SAIDA : TIPOS_MOV.AJUSTE}, ${Number(paId)}, ${Number(gramatura)},
+    VALUES (NULL, ${dataRef}, ${q < 0 ? TIPOS_MOV.SAIDA : TIPOS_MOV.AJUSTE}, ${Number(paId)}, ${rotulo},
             ${q}, ${custoUnit}, ${q * custoUnit}, ${descricao || 'Ajuste de inventário'})
   `
   return est[0]
@@ -168,7 +177,7 @@ export async function resumoPAEstoque() {
       grupos[chave] = {
         paId: r.pa_id,
         paNome: nomePorId[r.pa_id] || `#${r.pa_id}`,
-        gramatura: Number(r.gramatura),
+        gramatura: r.gramatura, // rótulo em texto ("250g", "Drip (10g)"); use pesoGramas p/ cálculo
         quantidade: 0,
         custoTotal: 0,
       }

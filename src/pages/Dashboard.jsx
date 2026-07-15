@@ -4,7 +4,7 @@ import Topbar from '../components/Topbar'
 import { getUsuario } from '../utils/auth'
 import { ehMaster } from '../utils/permissoes'
 import { formatarKg, formatarMoeda } from '../utils/formato'
-import { lotesCruDisponiveis, resumoPAEstoque, formatarGramatura } from '../utils/pa'
+import { lotesCruDisponiveis, resumoPAEstoque, formatarGramatura, pesoGramas } from '../utils/pa'
 import { carregarEstoqueTorrado } from '../utils/torrado'
 import './Dashboard.css'
 
@@ -126,7 +126,7 @@ export default function Dashboard() {
             .filter((x) => x.quantidade > 0)
             .sort(
               (a, b) =>
-                (a.paNome || '').localeCompare(b.paNome || '') || a.gramatura - b.gramatura,
+                (a.paNome || '').localeCompare(b.paNome || '') || pesoGramas(a.gramatura) - pesoGramas(b.gramatura),
             ),
         )
       }
