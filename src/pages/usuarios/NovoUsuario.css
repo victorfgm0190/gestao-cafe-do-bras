@@ -232,3 +232,22 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Checkbox de "forçar troca de senha" */
+.nu-check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 12px;
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--texto-sec);
+}
+
+.nu-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--verde);
+  cursor: pointer;
+}

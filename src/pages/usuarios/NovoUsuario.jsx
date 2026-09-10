@@ -11,15 +11,21 @@ import './NovoUsuario.css'
 function estadoInicial(usuario) {
   if (usuario) {
     return {
+      username: usuario.username || '',
+      senha: '',
+      forcarTroca: false,
       nome: usuario.nome || '',
       email: usuario.email || '',
       telefone: usuario.telefone || '',
-      status: usuario.status || 'ativo',
+      status: usuario.ativo === false ? 'inativo' : 'ativo',
       perfil: usuario.perfil || PERFIS.CONSULTA,
       permissoes: usuario.permissoes || permissoesPadrao(usuario.perfil),
     }
   }
   return {
+    username: '',
+    senha: '',
+    forcarTroca: false,
     nome: '',
     email: '',
     telefone: '',
@@ -29,7 +35,7 @@ function estadoInicial(usuario) {
   }
 }
 
-export default function NovoUsuario({ usuario, onSalvar, onFechar }) {
+export default function NovoUsuario({ usuario, salvando = false, onSalvar, onFechar }) {
   const editando = Boolean(usuario)
   const [form, setForm] = useState(() => estadoInicial(usuario))
   const [erros, setErros] = useState({})
@@ -55,6 +61,15 @@ export default function NovoUsuario({ usuario, onSalvar, onFechar }) {
 
   function validar() {
     const e = {}
+    if (!editando) {
+      if (!form.username.trim()) e.username = 'Informe o login.'
+      else if (/\s/.test(form.username.trim())) e.username = 'O login não pode conter espaços.'
+      if (form.senha.length < 6) e.senha = 'A senha inicial precisa de ao menos 6 caracteres.'
+    } else if (form.senha && form.senha.length < 6) {
+      e.senha = 'A nova senha precisa de ao menos 6 caracteres.'
+    } else if (form.forcarTroca && !form.senha) {
+      e.senha = 'Preencha a senha para forçar a troca no próximo login.'
+    }
     if (!form.nome.trim()) e.nome = 'Informe o nome completo.'
     // E-mail é opcional; se preenchido, precisa ser válido.
     if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()))
@@ -68,10 +83,19 @@ export default function NovoUsuario({ usuario, onSalvar, onFechar }) {
     e.preventDefault()
     if (!validar()) return
     onSalvar({
+      // username e senha só existem no cadastro: o login é a identidade da conta
+      // e a senha depois é redefinida pela ação "Senha" da listagem.
+      ...(editando
+        ? form.senha
+          ? // preenchido: o pai também chama trocar-senha. forcarTroca=false não
+            // mexe em primeiro_acesso — uma troca já pendente segue pendente.
+            { senha: form.senha, forcarTroca: form.forcarTroca }
+          : {}
+        : { username: form.username.trim(), senha: form.senha }),
       nome: form.nome.trim(),
       email: form.email.trim(),
       telefone: form.telefone.trim(),
-      status: form.status,
+      ativo: form.status === 'ativo',
       perfil: form.perfil,
       permissoes: form.permissoes,
     })
@@ -90,6 +114,25 @@ export default function NovoUsuario({ usuario, onSalvar, onFechar }) {
         <form onSubmit={salvar} className="nu-form">
           <div className="nu-secao">
             <h3 className="nu-secao-titulo">Dados do usuário</h3>
+
+            {!editando && (
+              <label className="campo">
+                <span className="campo-label">
+                  Login <span className="obrig">*</span>
+                </span>
+                <input
+                  type="text"
+                  value={form.username}
+                  onChange={(e) => atualizarCampo('username', e.target.value)}
+                  placeholder="Ex.: maria"
+                  autoComplete="off"
+                />
+                {erros.username && <span className="campo-erro">{erros.username}</span>}
+                <span className="campo-ajuda">
+                  É o que a pessoa digita para entrar. Não pode ser alterado depois.
+                </span>
+              </label>
+            )}
 
             <label className="campo">
               <span className="campo-label">
@@ -141,10 +184,24 @@ export default function NovoUsuario({ usuario, onSalvar, onFechar }) {
             </label>
 
             {!editando && (
-              <div className="nu-aviso-senha">
-                🔑 Senha padrão: <strong>123456</strong> — o usuário deverá trocá-la no
-                primeiro acesso.
-              </div>
+              <>
+                <label className="campo">
+                  <span className="campo-label">
+                    Senha inicial <span className="obrig">*</span>
+                  </span>
+                  <input
+                    type="password"
+                    value={form.senha}
+                    onChange={(e) => atualizarCampo('senha', e.target.value)}
+                    placeholder="Ao menos 6 caracteres"
+                    autoComplete="new-password"
+                  />
+                  {erros.senha && <span className="campo-erro">{erros.senha}</span>}
+                </label>
+                <div className="nu-aviso-senha">
+                  🔑 O usuário será obrigado a trocar esta senha no primeiro acesso.
+                </div>
+              </>
             )}
           </div>
 
@@ -207,12 +264,44 @@ export default function NovoUsuario({ usuario, onSalvar, onFechar }) {
             </div>
           </div>
 
+          {editando && (
+            <div className="nu-secao">
+              <h3 className="nu-secao-titulo">Redefinir senha</h3>
+              <label className="campo">
+                <span className="campo-label">Nova senha</span>
+                <input
+                  type="password"
+                  value={form.senha}
+                  onChange={(e) => atualizarCampo('senha', e.target.value)}
+                  placeholder="Deixe em branco para manter a atual"
+                  autoComplete="new-password"
+                />
+                {erros.senha && <span className="campo-erro">{erros.senha}</span>}
+              </label>
+
+              <label className="nu-check">
+                <input
+                  type="checkbox"
+                  checked={form.forcarTroca}
+                  onChange={(e) => atualizarCampo('forcarTroca', e.target.checked)}
+                />
+                <span>Forçar troca de senha no próximo login</span>
+              </label>
+
+              {form.senha && form.forcarTroca && (
+                <div className="nu-aviso-senha">
+                  🔑 A senha será resetada. O usuário terá que trocar no próximo login.
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="nu-form-acoes">
             <button type="button" className="btn btn-ghost" onClick={onFechar}>
               Cancelar
             </button>
-            <button type="submit" className="btn btn-primary">
-              {editando ? 'Salvar alterações' : 'Cadastrar usuário'}
+            <button type="submit" className="btn btn-primary" disabled={salvando}>
+              {salvando ? 'Salvando...' : editando ? 'Salvar alterações' : 'Cadastrar usuário'}
             </button>
           </div>
         </form>

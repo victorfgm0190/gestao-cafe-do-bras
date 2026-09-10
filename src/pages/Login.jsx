@@ -100,7 +100,6 @@ export default function Login() {
           </button>
         </form>
 
-        <p className="login-dica">Dica: usuário <strong>admin</strong> · senha <strong>admin</strong></p>
       </div>
 
       <p className="login-rodape">© {new Date().getFullYear()} Café do Brás — Gestão interna</p>

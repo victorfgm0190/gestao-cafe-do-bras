@@ -124,13 +124,6 @@
   margin-top: 2px;
 }
 
-.login-dica {
-  text-align: center;
-  font-size: 12.5px;
-  color: var(--texto-muted);
-  margin-top: 20px;
-}
-
 .login-rodape {
   color: rgba(240, 234, 214, 0.6);
   font-size: 12.5px;

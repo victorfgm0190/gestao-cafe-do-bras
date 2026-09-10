@@ -2,66 +2,70 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Topbar from '../../components/Topbar'
 import NovoUsuario from './NovoUsuario'
-import {
-  carregarUsuarios,
-  salvarUsuarios,
-  proximoIdUsuario,
-  permissoesPadrao,
-  MODULOS,
-  PERMISSOES,
-  ehMaster,
-  nomeUsuarioAtual,
-} from '../../utils/permissoes'
+import { getJson, sendJson } from '../../utils/api'
+import { MODULOS, PERMISSOES, ehMaster, nomeUsuarioAtual } from '../../utils/permissoes'
 import { registrarLog, ACOES } from '../../utils/auditoria'
 import './Usuarios.css'
 
-// 'AAAA-MM-DD HH:MM' -> 'DD/MM/AAAA HH:MM'
+// Timestamp do Postgres (Date ou 'AAAA-MM-DD HH:MM:SS') -> 'DD/MM/AAAA HH:MM'
 function formatarAcesso(valor) {
   if (!valor) return 'Nunca acessou'
-  const [data, hora = ''] = valor.split(' ')
-  const [ano, mes, dia] = data.split('-')
-  if (!ano || !mes || !dia) return valor
-  return `${dia}/${mes}/${ano}${hora ? ' ' + hora : ''}`
+  const d = valor instanceof Date ? valor : new Date(String(valor).replace(' ', 'T'))
+  if (Number.isNaN(d.getTime())) return String(valor)
+  const p = (n) => String(n).padStart(2, '0')
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 export default function Usuarios() {
   const navigate = useNavigate()
   const [autorizado, setAutorizado] = useState(false)
   const [usuarios, setUsuarios] = useState([])
+  const [carregando, setCarregando] = useState(true)
+  const [erro, setErro] = useState('')
+  const [salvando, setSalvando] = useState(false)
   const [busca, setBusca] = useState('')
   const [modalForm, setModalForm] = useState(false)
   const [editando, setEditando] = useState(null)
   const [vendoPermissoes, setVendoPermissoes] = useState(null)
+  const [trocandoSenha, setTrocandoSenha] = useState(null)
+  const [novaSenha, setNovaSenha] = useState('')
 
-  // Somente Master acessa este módulo
+  // Somente Master acessa este módulo (a API também exige — isto é só a UI)
   useEffect(() => {
     if (!ehMaster()) {
       navigate('/dashboard', { replace: true })
       return
     }
     setAutorizado(true)
-    setUsuarios(carregarUsuarios())
+    carregar()
   }, [navigate])
 
-  function persistir(lista) {
-    setUsuarios(lista)
-    salvarUsuarios(lista)
+  async function carregar() {
+    setCarregando(true)
+    setErro('')
+    try {
+      const data = await getJson('/api/usuarios/listar')
+      setUsuarios(data.usuarios || [])
+    } catch (e) {
+      setErro(e.message || 'Não foi possível carregar os usuários.')
+    } finally {
+      setCarregando(false)
+    }
   }
 
   const usuariosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase()
     if (!termo) return usuarios
-    return usuarios.filter(
-      (u) =>
-        u.nome.toLowerCase().includes(termo) ||
-        u.email.toLowerCase().includes(termo) ||
-        (u.perfil || '').toLowerCase().includes(termo),
+    return usuarios.filter((u) =>
+      [u.nome, u.username, u.email, u.perfil].some((c) =>
+        (c || '').toLowerCase().includes(termo),
+      ),
     )
   }, [usuarios, busca])
 
   const resumo = useMemo(() => {
     const total = usuarios.length
-    const ativos = usuarios.filter((u) => u.status === 'ativo').length
+    const ativos = usuarios.filter((u) => u.ativo).length
     return { total, ativos, inativos: total - ativos }
   }, [usuarios])
 
@@ -80,64 +84,97 @@ export default function Usuarios() {
     setEditando(null)
   }
 
-  function salvarUsuario(dados) {
-    const autor = nomeUsuarioAtual()
-    if (editando) {
-      const lista = usuarios.map((u) => {
-        if (u.id !== editando.id) return u
-        return {
-          ...u,
-          nome: dados.nome,
-          email: dados.email,
-          telefone: dados.telefone,
-          // a senha não é alterada por aqui — só pela troca de senha do próprio usuário
-          status: dados.status,
-          perfil: dados.perfil,
-          permissoes: dados.permissoes,
+  async function salvarUsuario(dados) {
+    setSalvando(true)
+    try {
+      const autor = nomeUsuarioAtual()
+      if (editando) {
+        // A senha não é coluna do editar: vai por trocar-senha, que também marca
+        // primeiro_acesso. Campo em branco no formulário = manter a senha atual.
+        const { senha, forcarTroca, ...campos } = dados
+        await sendJson('/api/usuarios/editar', 'PUT', { id: editando.id, ...campos })
+        registrarLog(autor, 'Usuários', ACOES.ALTEROU, `Alterou o usuário ${dados.nome}`)
+        if (senha) {
+          await sendJson('/api/usuarios/trocar-senha', 'POST', {
+            usuarioId: editando.id,
+            novaSenha: senha,
+            forcarTroca: Boolean(forcarTroca),
+          })
+          registrarLog(
+            autor,
+            'Usuários',
+            ACOES.TROCOU_SENHA,
+            `Redefiniu a senha de ${dados.nome}${forcarTroca ? ' (troca obrigatória no próximo login)' : ''}`,
+          )
         }
-      })
-      persistir(lista)
-      registrarLog(autor, 'Usuários', ACOES.ALTEROU, `Alterou o usuário ${dados.nome}`)
-    } else {
-      const novo = {
-        id: proximoIdUsuario(usuarios),
-        nome: dados.nome,
-        email: dados.email,
-        telefone: dados.telefone,
-        senha: '123456', // senha padrão — trocada obrigatoriamente no primeiro acesso
-        status: dados.status,
-        perfil: dados.perfil,
-        permissoes: dados.permissoes || permissoesPadrao(dados.perfil),
-        dataCriacao: new Date().toISOString().slice(0, 10),
-        ultimoAcesso: null,
-        primeiroAcesso: true,
-        protegido: false,
+      } else {
+        await sendJson('/api/usuarios/criar', 'POST', dados)
+        registrarLog(autor, 'Usuários', ACOES.INCLUIU, `Cadastrou o usuário ${dados.nome}`)
       }
-      persistir([...usuarios, novo])
-      registrarLog(autor, 'Usuários', ACOES.INCLUIU, `Cadastrou o usuário ${dados.nome}`)
+      fecharForm()
+      await carregar()
+    } catch (e) {
+      window.alert(e.message || 'Não foi possível salvar o usuário.')
+    } finally {
+      setSalvando(false)
     }
-    fecharForm()
   }
 
-  function alternarStatus(u) {
-    const novoStatus = u.status === 'ativo' ? 'inativo' : 'ativo'
-    persistir(usuarios.map((x) => (x.id === u.id ? { ...x, status: novoStatus } : x)))
-    registrarLog(
-      nomeUsuarioAtual(),
-      'Usuários',
-      ACOES.ALTEROU,
-      `${novoStatus === 'ativo' ? 'Ativou' : 'Inativou'} o usuário ${u.nome}`,
-    )
+  async function alternarStatus(u) {
+    try {
+      await sendJson('/api/usuarios/editar', 'PUT', { id: u.id, ativo: !u.ativo })
+      registrarLog(
+        nomeUsuarioAtual(),
+        'Usuários',
+        ACOES.ALTEROU,
+        `${u.ativo ? 'Inativou' : 'Ativou'} o usuário ${u.nome}`,
+      )
+      await carregar()
+    } catch (e) {
+      window.alert(e.message || 'Não foi possível alterar o status.')
+    }
   }
 
-  function excluir(u) {
+  async function confirmarTrocaSenha() {
+    if (novaSenha.length < 6) {
+      window.alert('A senha precisa de ao menos 6 caracteres.')
+      return
+    }
+    setSalvando(true)
+    try {
+      const r = await sendJson('/api/usuarios/trocar-senha', 'POST', {
+        usuarioId: trocandoSenha.id,
+        novaSenha,
+      })
+      registrarLog(
+        nomeUsuarioAtual(),
+        'Usuários',
+        ACOES.TROCOU_SENHA,
+        `Redefiniu a senha de ${trocandoSenha.nome}`,
+      )
+      setTrocandoSenha(null)
+      setNovaSenha('')
+      window.alert(r.mensagem || 'Senha redefinida.')
+      await carregar()
+    } catch (e) {
+      window.alert(e.message || 'Não foi possível redefinir a senha.')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  async function excluir(u) {
     if (u.protegido) {
       window.alert('O usuário administrador não pode ser excluído.')
       return
     }
-    if (window.confirm(`Excluir o usuário ${u.nome}? Esta ação não pode ser desfeita.`)) {
-      persistir(usuarios.filter((x) => x.id !== u.id))
+    if (!window.confirm(`Excluir o usuário ${u.nome}? Esta ação não pode ser desfeita.`)) return
+    try {
+      await sendJson('/api/usuarios/excluir', 'DELETE', { id: u.id })
       registrarLog(nomeUsuarioAtual(), 'Usuários', ACOES.EXCLUIU, `Excluiu o usuário ${u.nome}`)
+      await carregar()
+    } catch (e) {
+      window.alert(e.message || 'Não foi possível excluir o usuário.')
     }
   }
 
@@ -156,6 +193,8 @@ export default function Usuarios() {
             + Novo usuário
           </button>
         </div>
+
+        {erro && <div className="us-erro">{erro}</div>}
 
         {/* Cards de resumo */}
         <div className="us-cards">
@@ -182,7 +221,7 @@ export default function Usuarios() {
             <span className="us-busca-icone">🔍</span>
             <input
               type="text"
-              placeholder="Buscar por nome, e-mail ou perfil..."
+              placeholder="Buscar por nome, login, e-mail ou perfil..."
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
             />
@@ -195,6 +234,7 @@ export default function Usuarios() {
             <thead>
               <tr>
                 <th>Nome</th>
+                <th>Login</th>
                 <th>E-mail</th>
                 <th>Perfil</th>
                 <th>Status</th>
@@ -203,64 +243,135 @@ export default function Usuarios() {
               </tr>
             </thead>
             <tbody>
-              {usuariosFiltrados.length === 0 && (
+              {carregando && (
                 <tr>
-                  <td colSpan={6} className="us-vazio">
+                  <td colSpan={7} className="us-vazio">
+                    Carregando usuários...
+                  </td>
+                </tr>
+              )}
+              {!carregando && usuariosFiltrados.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="us-vazio">
                     Nenhum usuário encontrado.
                   </td>
                 </tr>
               )}
-              {usuariosFiltrados.map((u) => (
-                <tr key={u.id}>
-                  <td>
-                    <div className="us-nome">
-                      {u.nome}
-                      {u.protegido && <span className="us-tag-admin">admin</span>}
-                    </div>
-                    {u.telefone && <div className="us-sub">{u.telefone}</div>}
-                  </td>
-                  <td>{u.email}</td>
-                  <td>
-                    <span className="us-perfil">{u.perfil}</span>
-                  </td>
-                  <td>
-                    <span
-                      className={`badge ${u.status === 'ativo' ? 'badge-pago' : 'badge-cancelado'}`}
-                    >
-                      {u.status === 'ativo' ? 'Ativo' : 'Inativo'}
-                    </span>
-                  </td>
-                  <td className="us-acesso">{formatarAcesso(u.ultimoAcesso)}</td>
-                  <td className="col-acoes">
-                    <div className="us-acoes">
-                      <button className="us-acao" onClick={() => abrirEdicao(u)}>
-                        ✎ Editar
-                      </button>
-                      <button className="us-acao" onClick={() => setVendoPermissoes(u)}>
-                        🔑 Permissões
-                      </button>
-                      <button className="us-acao" onClick={() => alternarStatus(u)}>
-                        {u.status === 'ativo' ? '⛔ Inativar' : '✓ Ativar'}
-                      </button>
-                      <button
-                        className="us-acao us-acao-excluir"
-                        onClick={() => excluir(u)}
-                        disabled={u.protegido}
-                        title={u.protegido ? 'O admin não pode ser excluído' : 'Excluir'}
-                      >
-                        🗑 Excluir
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {!carregando &&
+                usuariosFiltrados.map((u) => (
+                  <tr key={u.id}>
+                    <td>
+                      <div className="us-nome">
+                        {u.nome}
+                        {u.protegido && <span className="us-tag-admin">admin</span>}
+                      </div>
+                      {u.telefone && <div className="us-sub">{u.telefone}</div>}
+                    </td>
+                    <td>
+                      <span className="us-login">{u.username}</span>
+                      {u.primeiro_acesso && (
+                        <div className="us-sub">troca de senha pendente</div>
+                      )}
+                    </td>
+                    <td>{u.email || '—'}</td>
+                    <td>
+                      <span className="us-perfil">{u.perfil}</span>
+                    </td>
+                    <td>
+                      <span className={`badge ${u.ativo ? 'badge-pago' : 'badge-cancelado'}`}>
+                        {u.ativo ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </td>
+                    <td className="us-acesso">{formatarAcesso(u.ultimo_acesso)}</td>
+                    <td className="col-acoes">
+                      <div className="us-acoes">
+                        <button className="us-acao" onClick={() => abrirEdicao(u)}>
+                          ✎ Editar
+                        </button>
+                        <button className="us-acao" onClick={() => setVendoPermissoes(u)}>
+                          🔑 Permissões
+                        </button>
+                        <button
+                          className="us-acao"
+                          onClick={() => {
+                            setNovaSenha('')
+                            setTrocandoSenha(u)
+                          }}
+                        >
+                          🔒 Senha
+                        </button>
+                        <button className="us-acao" onClick={() => alternarStatus(u)}>
+                          {u.ativo ? '⛔ Inativar' : '✓ Ativar'}
+                        </button>
+                        <button
+                          className="us-acao us-acao-excluir"
+                          onClick={() => excluir(u)}
+                          disabled={u.protegido}
+                          title={u.protegido ? 'O admin não pode ser excluído' : 'Excluir'}
+                        >
+                          🗑 Excluir
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
       </main>
 
       {modalForm && (
-        <NovoUsuario usuario={editando} onSalvar={salvarUsuario} onFechar={fecharForm} />
+        <NovoUsuario
+          usuario={editando}
+          salvando={salvando}
+          onSalvar={salvarUsuario}
+          onFechar={fecharForm}
+        />
+      )}
+
+      {/* Redefinição de senha pelo Master */}
+      {trocandoSenha && (
+        <div className="us-overlay" onMouseDown={() => setTrocandoSenha(null)}>
+          <div className="us-modal-senha" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="us-modal-topo">
+              <div>
+                <h2>Redefinir senha</h2>
+                <span className="us-modal-sub">{trocandoSenha.nome}</span>
+              </div>
+              <button
+                className="us-fechar"
+                onClick={() => setTrocandoSenha(null)}
+                aria-label="Fechar"
+              >
+                ✕
+              </button>
+            </div>
+            <label className="campo">
+              <span className="campo-label">Nova senha</span>
+              <input
+                type="password"
+                value={novaSenha}
+                autoFocus
+                autoComplete="new-password"
+                placeholder="Ao menos 6 caracteres"
+                onChange={(e) => setNovaSenha(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && confirmarTrocaSenha()}
+              />
+              <span className="campo-ajuda">
+                {trocandoSenha.nome} será obrigado a trocá-la no próximo login — você não
+                precisa saber a senha definitiva dele.
+              </span>
+            </label>
+            <div className="us-modal-acoes">
+              <button className="btn btn-ghost" onClick={() => setTrocandoSenha(null)}>
+                Cancelar
+              </button>
+              <button className="btn btn-primary" onClick={confirmarTrocaSenha} disabled={salvando}>
+                {salvando ? 'Salvando...' : 'Redefinir senha'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Visualização somente leitura das permissões */}
