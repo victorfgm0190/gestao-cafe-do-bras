@@ -352,3 +352,169 @@ CREATE TABLE IF NOT EXISTS config_estoque_minimo (
   chave VARCHAR(60) PRIMARY KEY,
   minimo DECIMAL(14,3) NOT NULL DEFAULT 0
 );
+
+
+-- ============================================================================
+-- BOLETOS — CONTAS A PAGAR PARCELADAS
+-- Nota fiscal/boleto do fornecedor. O valor entra parcelado e cada parcela
+-- vira uma linha em boleto_parcelas. Vira custo de estoque quando é vinculado
+-- a um lote de café cru e/ou a um insumo (ver `vinculos`).
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS boletos (
+  id SERIAL PRIMARY KEY,
+  fornecedor VARCHAR(120) NOT NULL,
+  data_entrada DATE NOT NULL,
+  valor_total DECIMAL(14,2) NOT NULL,
+  parcelas_quantidade INTEGER NOT NULL,
+  valor_parcela DECIMAL(14,2) NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'SEM_VINCULO'
+    CHECK (status IN ('SEM_VINCULO', 'VINCULADO', 'PAGO', 'CANCELADO')),
+  observacoes TEXT,
+  criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+  atualizado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+  excluido_em TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_boletos_status ON boletos (status);
+CREATE INDEX IF NOT EXISTS idx_boletos_fornecedor ON boletos (fornecedor);
+CREATE INDEX IF NOT EXISTS idx_boletos_data_entrada ON boletos (data_entrada);
+
+
+-- ============================================================================
+-- BOLETOS — PARCELAS
+-- Uma linha por parcela. O UNIQUE impede gravar a mesma parcela duas vezes
+-- num reprocessamento.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS boleto_parcelas (
+  id SERIAL PRIMARY KEY,
+  boleto_id INTEGER NOT NULL REFERENCES boletos(id) ON DELETE CASCADE,
+  numero_parcela INTEGER NOT NULL,
+  valor DECIMAL(14,2) NOT NULL,
+  data_vencimento DATE NOT NULL,
+  data_pagamento DATE,
+  status VARCHAR(20) NOT NULL DEFAULT 'ABERTO'
+    CHECK (status IN ('ABERTO', 'PAGO', 'CANCELADO')),
+  criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+  UNIQUE (boleto_id, numero_parcela)
+);
+CREATE INDEX IF NOT EXISTS idx_boleto_parcelas_boleto ON boleto_parcelas (boleto_id);
+CREATE INDEX IF NOT EXISTS idx_boleto_parcelas_status ON boleto_parcelas (status);
+CREATE INDEX IF NOT EXISTS idx_boleto_parcelas_vencimento ON boleto_parcelas (data_vencimento);
+
+
+-- ============================================================================
+-- VÍNCULOS — BOLETO PARA LOTE DE CAFÉ CRU / INSUMO
+-- É o que transforma um boleto em custo de estoque. Alterar um vínculo dispara
+-- o recálculo em cascata (custo médio do grupo fazenda+variedade), e cada
+-- registro afetado fica em vinculo_impacto.
+-- criado_por é ON DELETE SET NULL: excluir um usuário não pode derrubar o
+-- histórico de custo, nem travar /api/usuarios/excluir.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS vinculos (
+  id SERIAL PRIMARY KEY,
+  boleto_id INTEGER NOT NULL REFERENCES boletos(id) ON DELETE RESTRICT,
+  cafe_cru_lote_id INTEGER NOT NULL REFERENCES lotes_cafe_cru(id) ON DELETE RESTRICT,
+  insumo_id INTEGER REFERENCES insumos_cadastro(id) ON DELETE SET NULL,
+  custo_calculado DECIMAL(14,2),
+  status VARCHAR(20) NOT NULL DEFAULT 'ATIVO'
+    CHECK (status IN ('ATIVO', 'CANCELADO')),
+  criado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+  atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_vinculos_boleto ON vinculos (boleto_id);
+CREATE INDEX IF NOT EXISTS idx_vinculos_lote ON vinculos (cafe_cru_lote_id);
+CREATE INDEX IF NOT EXISTS idx_vinculos_status ON vinculos (status);
+
+
+-- ============================================================================
+-- VÍNCULOS — IMPACTO DA CASCATA
+-- Append-only: uma linha por registro que o recálculo alterou, com o valor
+-- antes e depois. É o rastro para auditar por que um custo mudou.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS vinculo_impacto (
+  id SERIAL PRIMARY KEY,
+  vinculo_id INTEGER NOT NULL REFERENCES vinculos(id) ON DELETE CASCADE,
+  tabela_afetada VARCHAR(60) NOT NULL,
+  registro_id_afetado INTEGER,
+  valor_antes DECIMAL(14,4),
+  valor_depois DECIMAL(14,4),
+  criado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_vinculo_impacto_vinculo ON vinculo_impacto (vinculo_id);
+
+
+-- ============================================================================
+-- BLING — STATUS DE SINCRONIZAÇÃO
+-- Uma linha por SKU, ou seja, por (produto, gramatura): no Bling cada
+-- gramatura é uma variação com saldo próprio, e o saldo daqui também é por
+-- (pa_id, gramatura) em pa_estoque. Sem a gramatura não dá para comparar.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS bling_sync_status (
+  id SERIAL PRIMARY KEY,
+  produto_id INTEGER NOT NULL REFERENCES pa_cadastro(id) ON DELETE CASCADE,
+  gramatura TEXT NOT NULL,
+  ultimo_sync_enviado TIMESTAMP,
+  ultimo_sync_recebido TIMESTAMP,
+  saldo_cafe_do_bras DECIMAL(14,3),
+  saldo_bling DECIMAL(14,3),
+  divergencia DECIMAL(14,3),
+  status_divergencia VARCHAR(20) NOT NULL DEFAULT 'SINCRONIZADO'
+    CHECK (status_divergencia IN ('SINCRONIZADO', 'DIVERGENCIA', 'AJUSTANDO')),
+  observacoes JSONB,
+  atualizado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+  UNIQUE (produto_id, gramatura)
+);
+CREATE INDEX IF NOT EXISTS idx_bling_sync_status_produto ON bling_sync_status (produto_id);
+CREATE INDEX IF NOT EXISTS idx_bling_sync_status_divergencia ON bling_sync_status (status_divergencia);
+
+
+-- ============================================================================
+-- BLING — LOG DE SINCRONIZAÇÃO
+-- Append-only. Histórico de cada envio/recebimento de saldo, com a resposta
+-- crua do Bling para diagnóstico.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS bling_sync_log (
+  id SERIAL PRIMARY KEY,
+  tipo VARCHAR(30) NOT NULL
+    CHECK (tipo IN ('PUSH_PRODUCAO', 'PULL_VENDA', 'AJUSTE_DIVERGENCIA')),
+  produto_id INTEGER REFERENCES pa_cadastro(id) ON DELETE SET NULL,
+  gramatura TEXT,
+  saldo_antes DECIMAL(14,3),
+  saldo_depois DECIMAL(14,3),
+  quantidade_alterada DECIMAL(14,3),
+  origem VARCHAR(30) NOT NULL
+    CHECK (origem IN ('REGISTRAR_TORRA', 'VENDA_BLING', 'AJUSTE_MANUAL')),
+  status VARCHAR(20) NOT NULL DEFAULT 'SUCESSO'
+    CHECK (status IN ('SUCESSO', 'ERRO', 'PENDENTE')),
+  mensagem TEXT,
+  usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  bling_response JSONB,
+  criado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_bling_sync_log_tipo ON bling_sync_log (tipo);
+CREATE INDEX IF NOT EXISTS idx_bling_sync_log_status ON bling_sync_log (status);
+CREATE INDEX IF NOT EXISTS idx_bling_sync_log_criado_em ON bling_sync_log (criado_em DESC);
+
+
+-- ============================================================================
+-- VIEW — SALDO DE PA CONTRA O SALDO DO BLING
+-- pa_estoque é razão (uma linha por movimento), então o saldo real é a soma
+-- das quantidades por (pa_id, gramatura). O saldo PROJETADO não entra aqui:
+-- depende do mix de projeção e do cru/torrado disponível, e é calculado em
+-- resumoProjecaoPA() (api/pa/_lib.js).
+-- ============================================================================
+CREATE OR REPLACE VIEW pa_estoque_com_sync AS
+SELECT
+  e.pa_id,
+  p.nome AS pa_nome,
+  e.gramatura,
+  SUM(e.quantidade) AS saldo_real,
+  s.saldo_bling,
+  s.divergencia,
+  s.status_divergencia,
+  s.ultimo_sync_enviado
+FROM pa_estoque e
+JOIN pa_cadastro p ON p.id = e.pa_id
+LEFT JOIN bling_sync_status s ON s.produto_id = e.pa_id AND s.gramatura = e.gramatura
+GROUP BY e.pa_id, p.nome, e.gramatura,
+         s.saldo_bling, s.divergencia, s.status_divergencia, s.ultimo_sync_enviado;
