@@ -11,10 +11,13 @@ import { TIPOS_MOV, calcularOrdem, formatarGramatura } from './_lib.js'
 import { chaveGrupo, recalcularGrupo } from '../cafe-cru/_lib.js'
 import { recalcularTorrado } from '../torrado/_lib.js'
 import { recalcularInsumo } from '../insumos/_lib.js'
+import { exigirPermissao } from '../_auth.js'
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, ['GET', 'POST'])) return
+  const autorizado = await exigirPermissao(req, res, 'Estoque PA')
+  if (!autorizado) return
 
   try {
     if (req.method === 'GET') {

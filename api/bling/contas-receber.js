@@ -3,6 +3,7 @@
 
 import { blingFetch } from './auth.js'
 import { respostaSucesso, respostaErro, enviarJson, aplicarCors, garantirMetodo } from './_lib.js'
+import { exigirPermissao } from '../_auth.js'
 
 function mapearConta(c) {
   return {
@@ -19,6 +20,8 @@ function mapearConta(c) {
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, 'GET')) return
+  const autorizado = await exigirPermissao(req, res, 'Contas a Receber')
+  if (!autorizado) return
 
   try {
     const { dataVencimentoInicial, dataVencimentoFinal, situacao, pagina } = req.query || {}

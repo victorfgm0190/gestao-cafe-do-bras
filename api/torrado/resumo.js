@@ -2,10 +2,13 @@
 
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo } from '../_http.js'
 import { resumoTorrado } from './_lib.js'
+import { exigirPermissao } from '../_auth.js'
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, 'GET')) return
+  const autorizado = await exigirPermissao(req, res, 'Estoque PP')
+  if (!autorizado) return
   try {
     const r = await resumoTorrado()
     return enviarJson(res, 200, { ...r, ultimaAtualizacao: null })

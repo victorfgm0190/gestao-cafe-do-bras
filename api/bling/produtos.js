@@ -12,6 +12,7 @@ import {
   garantirMetodo,
   lerCorpo,
 } from './_lib.js'
+import { exigirPermissao } from '../_auth.js'
 
 function mapearProduto(p) {
   const estoque = Number(p.estoque?.saldoVirtualTotal ?? p.saldoFisicoTotal ?? 0)
@@ -84,6 +85,8 @@ async function atualizarEstoque(req, res) {
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, ['GET', 'PUT'])) return
+  const autorizado = await exigirPermissao(req, res, 'Estoque PA')
+  if (!autorizado) return
 
   try {
     if (req.method === 'GET') return await listar(req, res)

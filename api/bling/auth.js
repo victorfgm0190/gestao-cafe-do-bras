@@ -10,6 +10,7 @@
 
 import { Redis } from '@upstash/redis'
 import { respostaSucesso, respostaErro, enviarJson, aplicarCors, garantirMetodo, esperar } from './_lib.js'
+import { exigirMaster } from '../_auth.js'
 
 const BASE_URL = process.env.BLING_BASE_URL || 'https://www.bling.com.br/Api/v3'
 // client_id e redirect_uri não são segredos (aparecem na URL de autorização) — ok ter default.
@@ -204,6 +205,8 @@ export async function blingFetch(caminho, opcoes = {}, _tentativa = 0) {
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, 'GET')) return
+  const autorizado = await exigirMaster(req, res)
+  if (!autorizado) return
   try {
     const conectado = await estaConectado()
     enviarJson(res, 200, respostaSucesso({ url: getAuthUrl(), conectado }))

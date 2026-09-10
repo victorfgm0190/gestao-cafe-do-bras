@@ -5,10 +5,13 @@
 import { sql } from './db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from './_http.js'
 import { TIPOS_INVENTARIO, gerarItensSistema } from './inventario/_lib.js'
+import { exigirPermissao } from './_auth.js'
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, ['GET', 'POST'])) return
+  const autorizado = await exigirPermissao(req, res, 'Inventário')
+  if (!autorizado) return
 
   try {
     if (req.method === 'GET') {

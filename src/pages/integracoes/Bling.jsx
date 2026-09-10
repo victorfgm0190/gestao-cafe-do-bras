@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import Topbar from '../../components/Topbar'
 import { registrarLog, ACOES } from '../../utils/auditoria'
 import { nomeUsuarioAtual } from '../../utils/permissoes'
+import { authHeaders } from '../../utils/api'
 import './Bling.css'
 
 const CHAVE_HISTORICO = 'cafe_do_bras_bling_sync'
@@ -40,7 +41,7 @@ export default function Bling() {
   async function verificarStatus() {
     setCarregando(true)
     try {
-      const r = await fetch('/api/bling/auth')
+      const r = await fetch('/api/bling/auth', { headers: authHeaders() })
       const json = await r.json()
       setConectado(Boolean(json?.dados?.conectado))
     } catch {
@@ -87,7 +88,7 @@ export default function Bling() {
     setOcupado('conectar')
     setAviso(null)
     try {
-      const r = await fetch('/api/bling/auth')
+      const r = await fetch('/api/bling/auth', { headers: authHeaders() })
       const json = await r.json()
       if (json?.sucesso && json.dados?.url) {
         window.location.href = json.dados.url
@@ -105,7 +106,7 @@ export default function Bling() {
     setOcupado('pedidos')
     setAviso(null)
     try {
-      const r = await fetch('/api/bling/pedidos')
+      const r = await fetch('/api/bling/pedidos', { headers: authHeaders() })
       const json = await r.json()
       if (json?.sucesso) {
         const qtd = json.dados.length
@@ -128,7 +129,7 @@ export default function Bling() {
     setOcupado('produtos')
     setAviso(null)
     try {
-      const r = await fetch('/api/bling/produtos')
+      const r = await fetch('/api/bling/produtos', { headers: authHeaders() })
       const json = await r.json()
       if (json?.sucesso) {
         const lista = Array.isArray(json.dados) ? json.dados : []
@@ -152,7 +153,7 @@ export default function Bling() {
     setOcupado('importarPA')
     setAviso(null)
     try {
-      const r = await fetch('/api/bling/importar-produtos-pa')
+      const r = await fetch('/api/bling/importar-produtos-pa', { headers: authHeaders() })
       const json = await r.json()
       if (r.ok && json?.sucesso) {
         const total = Number(json.total) || 0
@@ -178,7 +179,7 @@ export default function Bling() {
     try {
       // Puxa produtos/saldos atuais do Bling (leitura). A escrita de saldo é feita
       // por item via PUT /api/bling/estoque quando houver origem de dados local.
-      const r = await fetch('/api/bling/produtos')
+      const r = await fetch('/api/bling/produtos', { headers: authHeaders() })
       const json = await r.json()
       if (json?.sucesso) {
         const qtd = json.dados.length

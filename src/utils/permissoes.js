@@ -1,5 +1,5 @@
 import { getUsuario, atualizarSessao } from './auth'
-import { apiUrl } from './api'
+import { apiUrl, authHeaders } from './api'
 
 const CHAVE_USUARIOS = 'cafe_do_bras_usuarios'
 
@@ -189,11 +189,12 @@ export async function autenticarUsuario(identificador, senha) {
     })
     if (!res.ok) return null
     const data = await res.json().catch(() => null)
-    if (!data?.success || !data.usuario) return null
+    if (!data?.success || !data.usuario || !data.token) return null
 
     const u = data.usuario // { id, username, nome, perfil, permissoes, primeiro_acesso }
     return {
       ...u,
+      token: data.token, // JWT — login() guarda em chave própria
       primeiroAcesso: u.primeiro_acesso === true, // adapta snake→camel esperado pelo front
       status: 'ativo',
     }
@@ -203,13 +204,14 @@ export async function autenticarUsuario(identificador, senha) {
 }
 
 // Troca a senha no backend (valida a senha atual com bcrypt e zera
-// primeiro_acesso). Retorna { sucesso, erro? }. Assíncrona.
-export async function atualizarSenha(username, senhaAtual, novaSenha) {
+// primeiro_acesso). O usuário alterado é o dono do token — o backend ignora
+// qualquer username enviado. Retorna { sucesso, erro? }. Assíncrona.
+export async function atualizarSenha(senhaAtual, novaSenha) {
   try {
     const res = await fetch(apiUrl('/api/auth/change-password'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, senhaAtual, novaSenha }),
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ senhaAtual, novaSenha }),
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok || !data?.success) {

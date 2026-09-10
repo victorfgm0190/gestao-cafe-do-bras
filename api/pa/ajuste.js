@@ -3,10 +3,13 @@
 
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from '../_http.js'
 import { ajustarEstoquePA } from './_lib.js'
+import { exigirPermissao } from '../_auth.js'
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, 'POST')) return
+  const autorizado = await exigirPermissao(req, res, 'Estoque PA', 'editar')
+  if (!autorizado) return
   try {
     const b = await lerCorpo(req)
     const registro = await ajustarEstoquePA(b)

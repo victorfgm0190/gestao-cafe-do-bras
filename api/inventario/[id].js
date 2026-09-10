@@ -4,10 +4,13 @@
 
 import { sql } from '../db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from '../_http.js'
+import { exigirPermissao } from '../_auth.js'
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, ['GET', 'PUT', 'DELETE'])) return
+  const autorizado = await exigirPermissao(req, res, 'Inventário')
+  if (!autorizado) return
 
   const id = Number(req.query.id)
   if (!Number.isFinite(id)) return enviarErro(res, 400, 'id inválido.')

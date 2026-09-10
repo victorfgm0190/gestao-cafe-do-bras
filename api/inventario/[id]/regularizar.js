@@ -11,6 +11,7 @@ import { chaveGrupo, recalcularGrupo } from '../../cafe-cru/_lib.js'
 import { recalcularTorrado } from '../../torrado/_lib.js'
 import { recalcularInsumo } from '../../insumos/_lib.js'
 import { ajustarEstoquePA } from '../../pa/_lib.js'
+import { exigirPermissao } from '../../_auth.js'
 
 const AJUSTE = 'Ajuste'
 const SAIDA = 'Saída'
@@ -18,6 +19,8 @@ const SAIDA = 'Saída'
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, 'POST')) return
+  const autorizado = await exigirPermissao(req, res, 'Inventário', 'editar')
+  if (!autorizado) return
 
   const id = Number(req.query.id)
   if (!Number.isFinite(id)) return enviarErro(res, 400, 'id inválido.')

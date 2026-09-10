@@ -1,6 +1,7 @@
 import { registrarLog, ACOES } from './auditoria'
 
 const CHAVE = 'cafe_do_bras_auth'
+const CHAVE_TOKEN = 'cafe_do_bras_token'
 
 // Grava a sessão do usuário logado (continua no cliente — só a autenticação vai
 // ao banco). Aceita o objeto de usuário retornado pela API OU uma string legada.
@@ -17,6 +18,11 @@ export function login(usuario) {
           email: usuario.email ?? usuario.username ?? '',
           perfil: usuario.perfil,
         }
+  // O token JWT fica numa chave separada; sem ele a API responde 401.
+  if (dados.token) {
+    localStorage.setItem(CHAVE_TOKEN, dados.token)
+    delete dados.token
+  }
   localStorage.setItem(CHAVE, JSON.stringify(dados))
   registrarLog(dados.usuario, 'Autenticação', ACOES.LOGIN, 'Entrou no sistema')
 }
@@ -27,6 +33,23 @@ export function logout() {
     registrarLog(atual.usuario, 'Autenticação', ACOES.LOGOUT, 'Saiu do sistema')
   }
   localStorage.removeItem(CHAVE)
+  localStorage.removeItem(CHAVE_TOKEN)
+}
+
+// Token JWT da sessão atual (enviado pelo api.js em Authorization: Bearer).
+export function getToken() {
+  try {
+    return localStorage.getItem(CHAVE_TOKEN) || null
+  } catch {
+    return null
+  }
+}
+
+// Encerra a sessão sem registrar log (usado quando a API devolve 401 — o token
+// já expirou, então não há sessão válida para auditar).
+export function encerrarSessaoExpirada() {
+  localStorage.removeItem(CHAVE)
+  localStorage.removeItem(CHAVE_TOKEN)
 }
 
 export function getUsuario() {
@@ -40,7 +63,9 @@ export function getUsuario() {
 }
 
 export function estaLogado() {
-  return getUsuario() !== null
+  // Exige token: sessões antigas (anteriores ao JWT) precisam refazer o login,
+  // senão o app abriria e todas as chamadas de API voltariam 401.
+  return getUsuario() !== null && getToken() !== null
 }
 
 // Atualiza campos da sessão do usuário logado sem refazer o login

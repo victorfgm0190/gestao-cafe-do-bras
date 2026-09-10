@@ -10,6 +10,7 @@ import {
   garantirMetodo,
   lerCorpo,
 } from './_lib.js'
+import { exigirPermissao } from '../_auth.js'
 
 async function idPorCodigo(codigoProduto) {
   const params = new URLSearchParams({ codigo: String(codigoProduto), limite: '1' })
@@ -21,6 +22,8 @@ async function idPorCodigo(codigoProduto) {
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, ['PUT', 'POST'])) return
+  const autorizado = await exigirPermissao(req, res, 'Estoque PA')
+  if (!autorizado) return
 
   try {
     const { codigoProduto, deposito, quantidade } = await lerCorpo(req)

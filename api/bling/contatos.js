@@ -3,6 +3,7 @@
 
 import { blingFetch } from './auth.js'
 import { respostaSucesso, respostaErro, enviarJson, aplicarCors, garantirMetodo } from './_lib.js'
+import { exigirPermissao } from '../_auth.js'
 
 // No Bling v3 o tipo de relação vem em contato.tipos[].
 function ehTipo(contato, tipo) {
@@ -26,6 +27,8 @@ function mapearContato(c) {
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, 'GET')) return
+  const autorizado = await exigirPermissao(req, res, 'Vendas')
+  if (!autorizado) return
 
   try {
     const { tipo, pagina } = req.query || {}

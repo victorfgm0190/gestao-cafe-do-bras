@@ -8,12 +8,15 @@
 import { sql } from '../db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from '../_http.js'
 import { TIPOS_MOV, calcularDelta, recalcularInsumo } from './_lib.js'
+import { exigirPermissao } from '../_auth.js'
 
 const num = (v) => Number(String(v ?? '').replace(',', '.')) || 0
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, 'POST')) return
+  const autorizado = await exigirPermissao(req, res, 'Insumos')
+  if (!autorizado) return
 
   try {
     const b = await lerCorpo(req)

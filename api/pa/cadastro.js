@@ -4,10 +4,13 @@
 import { sql } from '../db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from '../_http.js'
 import { normalizarCafeOrigem } from './_lib.js'
+import { exigirPermissao } from '../_auth.js'
 
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, ['GET', 'POST'])) return
+  const autorizado = await exigirPermissao(req, res, 'Estoque PA')
+  if (!autorizado) return
 
   try {
     // Colunas do mix de projeção e origem do café (migração idempotente).

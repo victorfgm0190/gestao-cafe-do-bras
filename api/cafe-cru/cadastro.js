@@ -3,6 +3,7 @@
 
 import { sql } from '../db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from '../_http.js'
+import { exigirPermissao } from '../_auth.js'
 
 // Lista oficial de processos de café cru. O default é o primeiro item.
 export const PROCESSOS = [
@@ -60,6 +61,8 @@ export function normalizarPaIds(valor) {
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, ['GET', 'POST'])) return
+  const autorizado = await exigirPermissao(req, res, 'Estoque MP')
+  if (!autorizado) return
 
   try {
     await garantirTabelaCafes()

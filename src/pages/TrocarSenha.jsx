@@ -66,7 +66,7 @@ export default function TrocarSenha() {
 
     setSalvando(true)
     try {
-      const r = await atualizarSenha(usuario.username, senhaAtual, novaSenha)
+      const r = await atualizarSenha(senhaAtual, novaSenha)
       if (!r.sucesso) {
         setErro(r.erro || 'Não foi possível trocar a senha.')
         return

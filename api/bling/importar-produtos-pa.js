@@ -11,6 +11,7 @@
 import { sql } from '../db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo } from '../_http.js'
 import { blingFetch } from './auth.js'
+import { exigirPermissao } from '../_auth.js'
 
 // Busca todas as páginas de produtos do Bling (100 por página).
 async function buscarTodosProdutos() {
@@ -41,6 +42,8 @@ const EMBALAGEM_DRIP_ID = 6
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, 'GET')) return
+  const autorizado = await exigirPermissao(req, res, 'Estoque PA', 'incluir')
+  if (!autorizado) return
 
   try {
     // Garante a coluna bling_id como bigint (o id do Bling estoura o range de integer).

@@ -11,6 +11,7 @@ Sistema de gestão para microtorrefação de café especial, desenvolvido em Rea
 
 ## Módulos concluídos
 - Autenticação com perfis de permissão (Master, Financeiro, Estoque, Mestre de Torra, Vendas, Consulta)
+- Sessão por JWT (`api/_auth.js`) — todas as rotas da API exigem `Authorization: Bearer` e checam permissão por módulo direto no banco
 - Dashboard com alertas de estoque mínimo
 - Café Cru (MP) — entrada, kardex, saldo, recálculo em cascata
 - Insumos — CRUD e kardex de materiais de embalagem
@@ -40,3 +41,4 @@ Sistema de gestão para microtorrefação de café especial, desenvolvido em Rea
 | Data | Início | Fim | O que foi feito |
 |------|--------|-----|-----------------|
 | 2026-07-14 | 21:34 | 23:12 | Conexão OAuth2 Bling concluída; sincronização de 93 produtos do Bling; importação de 23 produtos pai do Bling para pa_cadastro; adição das gramaturas 200g e Drip (10g) em todos os PAs; migração de gramatura de INTEGER para TEXT no banco; criação do CLAUDE.md com contexto do projeto |
+| 2026-09-10 | 16:45 | 17:15 | Autenticação JWT ponta a ponta: criado `api/_auth.js` (token, guardas `exigirAutenticacao`/`exigirPermissao`/`exigirMaster`, auditoria no `audit_log`); 46 rotas da API protegidas com permissão por módulo; login passa a emitir token e change-password passa a alterar só o dono do token; front envia `Authorization: Bearer` em toda chamada e derruba a sessão em 401; `Authorization` liberado no CORS; novas envs `JWT_SECRET` e `JWT_EXPIRY` |

@@ -41,7 +41,7 @@ export function aplicarCors(req, res) {
   }
   res.setHeader('Vary', 'Origin')
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
   // Responde preflight imediatamente
   if (req.method === 'OPTIONS') {
     res.status(204).end()

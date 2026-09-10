@@ -4,6 +4,7 @@
 
 import { sql } from '../db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from '../_http.js'
+import { exigirAutenticacao, exigirMaster } from '../_auth.js'
 
 async function lerMapa() {
   const linhas = await sql`SELECT chave, minimo FROM config_estoque_minimo`
@@ -15,6 +16,11 @@ async function lerMapa() {
 export default async function handler(req, res) {
   if (aplicarCors(req, res)) return
   if (!garantirMetodo(req, res, ['GET', 'PUT'])) return
+  // Ler os mínimos é liberado a qualquer usuário logado (o Dashboard mostra os
+  // alertas de estoque para todos); alterar a configuração é só do Master.
+  const autorizado =
+    req.method === 'GET' ? exigirAutenticacao(req, res) : await exigirMaster(req, res)
+  if (!autorizado) return
 
   try {
     if (req.method === 'GET') {
