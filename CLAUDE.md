@@ -92,7 +92,9 @@ Serverless da Vercel, um arquivo por rota (sem Express). Permissão: módulo
 - **Datas por `to_char(...,'YYYY-MM-DD')`** e valores `numeric` lidos com `Number()`: o Postgres devolve `numeric` como string, e `DATE` pode vir como string ou `Date` conforme o driver.
 
 ### Testes
-`npm test` → `node --test` (embutido no Node; o projeto não tem jest/supertest).
+`npm test` → `node --test` (embutido no Node; o projeto não tem jest/supertest). Só regra pura, sem rede nem banco.
+
+`npm run test:e2e -- <token>` roda `api/boletos/_e2e.mjs` contra um deploy de verdade: cria, lista, edita, cancela e confere cada passo (27 verificações). **Escreve no banco do deploy apontado** — em produção é a base real; o boleto criado termina CANCELADO. Aponte para um preview com `API_BASE=https://<preview>.vercel.app/api`. Não entra no `npm test` porque o nome não termina em `.test.mjs`.
 `api/boletos/_lib.test.mjs` cobre a divisão em centavos — incluindo a propriedade "soma das parcelas = total" em ~2.300 combinações — e a mesclagem do PUT, com `atual` no formato que o Postgres devolve (`numeric` como string), para garantir que `'12000.00'` vs `12000` não dispare regeneração à toa.
 
 ### Próxima: PUT/DELETE de boletos e `POST /api/vinculos` (com cascata)
