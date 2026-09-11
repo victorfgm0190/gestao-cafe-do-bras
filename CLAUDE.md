@@ -68,6 +68,29 @@ as queries são `sql` tagged template do `@neondatabase/serverless` (`api/db.js`
 ### Próxima fase: APIs
 `POST /api/torradas` (sobre `ordens_producao`), `POST /api/boletos`, `POST /api/vinculos` (com cascata), `GET /api/bling/sync-status`.
 
+## Fase 2 (V2) — APIs de Boletos
+
+Serverless da Vercel, um arquivo por rota (sem Express). Permissão: módulo
+**Contas a Pagar** via `exigirPermissao`.
+
+| Rota | O que faz |
+|------|-----------|
+| `GET /api/boletos` | Lista com filtros `?status=&fornecedor=&pagina=&limite=`; devolve `{ boletos, paginacao }` com `parcelas_total`, `parcelas_pagas` e `valor_pago` por boleto |
+| `POST /api/boletos` | Cria o boleto e gera as parcelas. Corpo: `{ fornecedor, valorTotal, parcelasQuantidade, dataEntrada?, observacoes? }` |
+| `GET /api/boletos/sem-vinculo` | Só `status = SEM_VINCULO` e não excluídos — alimenta o seletor da tela de vínculo |
+
+### Decisões
+- **Criação em uma statement só, com CTEs.** O driver HTTP do Neon não abre transação interativa (`BEGIN`/`COMMIT`), então o INSERT do boleto e o das parcelas vão numa única query com `WITH ... RETURNING`, que já é atômica: não existe boleto sem parcela.
+- **Vencimentos via `+ interval 'n month'`** sobre `data_entrada` (não sobre "hoje"), o que também resolve fim de mês: 31/01 + 1 mês = 28/02.
+- **Divisão em centavos**: as primeiras parcelas levam `round(total/qtd, 2)` e a última absorve a diferença, para a soma bater exatamente com o total.
+- **Filtros como parâmetros anuláveis** (`$1::text IS NULL OR col = $1`) em vez de SQL montado em string.
+
+### Testes
+`npm test` → `node --test` (embutido no Node; o projeto não tem jest/supertest).
+`api/boletos/_lib.test.mjs` cobre a divisão em centavos, incluindo a propriedade "soma das parcelas = total" em ~2.300 combinações.
+
+### Próxima: PUT/DELETE de boletos e `POST /api/vinculos` (com cascata)
+
 ## Registro de sessões
 | Data | Início | Fim | O que foi feito |
 |------|--------|-----|-----------------|
@@ -75,3 +98,4 @@ as queries são `sql` tagged template do `@neondatabase/serverless` (`api/db.js`
 | 2026-09-10 | 16:45 | 17:15 | Autenticação JWT ponta a ponta: criado `api/_auth.js` (token, guardas `exigirAutenticacao`/`exigirPermissao`/`exigirMaster`, auditoria no `audit_log`); 46 rotas da API protegidas com permissão por módulo; login passa a emitir token e change-password passa a alterar só o dono do token; front envia `Authorization: Bearer` em toda chamada e derruba a sessão em 401; `Authorization` liberado no CORS; novas envs `JWT_SECRET` e `JWT_EXPIRY` |
 | 2026-09-10 | 17:20 | 18:05 | Gerenciamento de usuários no banco: APIs `api/usuarios/{listar,criar,editar,trocar-senha,excluir}` restritas ao Master (corrigido `if (!exigirMaster(...))` sem `await`, que nunca bloqueava por ser Promise); perfis validados contra `PERFIS` reais e `permissoes` gravadas no INSERT; `Usuarios.jsx`/`NovoUsuario.jsx` migradas de localStorage para as APIs, com campo de login, senha inicial e redefinição de senha com checkbox "forçar troca no próximo login"; usuário novo passa a nascer com `primeiro_acesso = false`; dica de login removida da tela inicial |
 | 2026-09-10 | 18:10 | 18:55 | Fase 1 V2 (banco): 6 tabelas novas em `api/schema.sql` — `boletos`, `boleto_parcelas`, `vinculos`, `vinculo_impacto`, `bling_sync_status`, `bling_sync_log` — mais a view `pa_estoque_com_sync`. Spec original vinha em Prisma (projeto não usa) e não executava: FK para `cadastro_insumos` (nome real `insumos_cadastro`), `UPDATE pa_estoque SET saldo_real = COALESCE(saldo,0)` numa tabela sem coluna `saldo`, e CHECK de gramatura sem `200g`/`Drip (10g)`. `torradas`/`detalhes`/`sobra` e as colunas de saldo em `pa_estoque` foram descartadas por duplicarem `ordens_producao` e `resumoProjecaoPA()` |
+| 2026-09-10 | 19:00 | 19:50 | Fase 2 V2 (APIs de boletos): `GET/POST /api/boletos` e `GET /api/boletos/sem-vinculo`, no padrão serverless do projeto (o esboço vinha em Express/`api/routes/`/`pool`, que não existem aqui). Criação atômica em uma statement com CTEs, já que o driver HTTP do Neon não abre transação interativa. Regras extraídas para `api/boletos/_lib.js` e cobertas por `npm test` (node:test, 7 testes) — os testes acharam dois bugs: campo ausente virava 0 e caía na mensagem de erro errada, e valor baixo em muitas parcelas gerava parcelas de R$ 0,00. Corrigido também o `COUNT(DISTINCT CASE ... THEN 1 END)` do esboço, que sempre contaria no máximo 1 parcela paga |
