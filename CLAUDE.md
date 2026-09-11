@@ -78,16 +78,22 @@ Serverless da Vercel, um arquivo por rota (sem Express). Permissão: módulo
 | `GET /api/boletos` | Lista com filtros `?status=&fornecedor=&pagina=&limite=`; devolve `{ boletos, paginacao }` com `parcelas_total`, `parcelas_pagas` e `valor_pago` por boleto |
 | `POST /api/boletos` | Cria o boleto e gera as parcelas. Corpo: `{ fornecedor, valorTotal, parcelasQuantidade, dataEntrada?, observacoes? }` |
 | `GET /api/boletos/sem-vinculo` | Só `status = SEM_VINCULO` e não excluídos — alimenta o seletor da tela de vínculo |
+| `GET /api/boletos/:id` | O boleto com as parcelas |
+| `PUT /api/boletos/:id` | Edita; só os campos enviados mudam. Se total, quantidade ou data de entrada mudarem, as parcelas são refeitas (`parcelasRefeitas: true` na resposta) |
+| `DELETE /api/boletos/:id` | Exclusão lógica: `excluido_em = NOW()`, boleto e parcelas → `CANCELADO`. Idempotente |
 
 ### Decisões
 - **Criação em uma statement só, com CTEs.** O driver HTTP do Neon não abre transação interativa (`BEGIN`/`COMMIT`), então o INSERT do boleto e o das parcelas vão numa única query com `WITH ... RETURNING`, que já é atômica: não existe boleto sem parcela.
 - **Vencimentos via `+ interval 'n month'`** sobre `data_entrada` (não sobre "hoje"), o que também resolve fim de mês: 31/01 + 1 mês = 28/02.
 - **Divisão em centavos**: as primeiras parcelas levam `round(total/qtd, 2)` e a última absorve a diferença, para a soma bater exatamente com o total.
 - **Filtros como parâmetros anuláveis** (`$1::text IS NULL OR col = $1`) em vez de SQL montado em string.
+- **No PUT as parcelas são refeitas via `transacao()`, não CTE.** Sub-statements de um `WITH` compartilham o snapshot e não veem o efeito um do outro: o `INSERT` das novas parcelas bateria no `UNIQUE (boleto_id, numero_parcela)` das antigas, que o `DELETE` ainda não teria tornado invisíveis. Numa transação eles são sequenciais. (No POST o CTE funciona porque as parcelas são todas novas.)
+- **Parcela paga trava a regeneração.** Refazer parcelas apaga as antigas; se alguma estiver `PAGO`, o PUT devolve 409 em vez de apagar o pagamento. O DELETE também recusa boleto com parcela paga.
+- **Datas por `to_char(...,'YYYY-MM-DD')`** e valores `numeric` lidos com `Number()`: o Postgres devolve `numeric` como string, e `DATE` pode vir como string ou `Date` conforme o driver.
 
 ### Testes
 `npm test` → `node --test` (embutido no Node; o projeto não tem jest/supertest).
-`api/boletos/_lib.test.mjs` cobre a divisão em centavos, incluindo a propriedade "soma das parcelas = total" em ~2.300 combinações.
+`api/boletos/_lib.test.mjs` cobre a divisão em centavos — incluindo a propriedade "soma das parcelas = total" em ~2.300 combinações — e a mesclagem do PUT, com `atual` no formato que o Postgres devolve (`numeric` como string), para garantir que `'12000.00'` vs `12000` não dispare regeneração à toa.
 
 ### Próxima: PUT/DELETE de boletos e `POST /api/vinculos` (com cascata)
 

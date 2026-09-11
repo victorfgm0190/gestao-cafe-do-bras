@@ -4,7 +4,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { montarBoleto, centavos, MAX_PARCELAS } from './_lib.js'
+import { montarBoleto, montarEdicao, centavos, MAX_PARCELAS } from './_lib.js'
 
 // Soma das parcelas como o SQL as grava: (qtd-1) x valorParcela + ultima.
 function somaParcelas(d) {
@@ -77,4 +77,75 @@ test('uma parcela só devolve o total inteiro', () => {
   assert.equal(d.valorParcela, 999.99)
   assert.equal(d.ultima, 999.99)
   assert.equal(somaParcelas(d), 999.99)
+})
+
+/* ---------- montarEdicao (PUT) ---------- */
+// `atual` imita o que o Postgres devolve: numeric vira string, date vem
+// normalizada por to_char.
+const ATUAL = {
+  id: 1,
+  fornecedor: 'Café Brasil',
+  data_entrada: '2026-09-10',
+  valor_total: '12000.00',
+  parcelas_quantidade: 4,
+  valor_parcela: '3000.00',
+  observacoes: null,
+}
+
+test('PUT: muda total e quantidade e refaz as parcelas', () => {
+  const d = montarEdicao({ valorTotal: 15000, parcelasQuantidade: 5 }, ATUAL)
+  assert.equal(d.valorTotal, 15000)
+  assert.equal(d.qtd, 5)
+  assert.equal(d.valorParcela, 3000)
+  assert.equal(d.ultima, 3000)
+  assert.equal(d.regenerar, true)
+  assert.equal(d.fornecedor, 'Café Brasil') // campo ausente não muda
+})
+
+test('PUT: numeric como string não dispara regeneração à toa', () => {
+  const d = montarEdicao({ valorTotal: 12000, parcelasQuantidade: 4 }, ATUAL)
+  assert.equal(d.regenerar, false, "'12000.00' e 12000 são o mesmo valor")
+})
+
+test('PUT: mexer só em fornecedor/observações não refaz parcelas', () => {
+  const d = montarEdicao({ fornecedor: 'Outro', observacoes: 'nota' }, ATUAL)
+  assert.equal(d.regenerar, false)
+  assert.equal(d.fornecedor, 'Outro')
+  assert.equal(d.observacoes, 'nota')
+  assert.equal(d.valorTotal, 12000)
+  assert.equal(d.qtd, 4)
+})
+
+test('PUT: mudar a data de entrada refaz as parcelas (é a base dos vencimentos)', () => {
+  const d = montarEdicao({ dataEntrada: '2026-10-01' }, ATUAL)
+  assert.equal(d.regenerar, true)
+})
+
+test('PUT: corpo vazio é no-op válido', () => {
+  const d = montarEdicao({}, ATUAL)
+  assert.ok(!d.erro)
+  assert.equal(d.regenerar, false)
+  assert.equal(d.valorParcela, 3000)
+})
+
+test('PUT: observacoes vazio limpa o campo', () => {
+  const d = montarEdicao({ observacoes: '' }, { ...ATUAL, observacoes: 'antiga' })
+  assert.equal(d.observacoes, null)
+})
+
+test('PUT: recusa entradas inválidas', () => {
+  const casos = [
+    [{ fornecedor: '   ' }, /fornecedor/],
+    [{ valorTotal: 0 }, /maior que zero/],
+    [{ valorTotal: -1 }, /maior que zero/],
+    [{ parcelasQuantidade: 0 }, /maior que zero/],
+    [{ parcelasQuantidade: 999 }, /No máximo/],
+    [{ dataEntrada: '01/10/2026' }, /AAAA-MM-DD/],
+    [{ valorTotal: 0.01, parcelasQuantidade: 5 }, /baixo demais/],
+  ]
+  for (const [corpo, esperado] of casos) {
+    const d = montarEdicao(corpo, ATUAL)
+    assert.ok(d.erro, `deveria recusar: ${JSON.stringify(corpo)}`)
+    assert.match(d.erro, esperado)
+  }
 })
