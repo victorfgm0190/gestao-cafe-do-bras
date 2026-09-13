@@ -1,7 +1,9 @@
 // GET  /api/boletos → lista com filtros e paginação
 //   Query: ?status=&fornecedor=&pagina=1&limite=20
 // POST /api/boletos → cria o boleto e gera as parcelas
-//   Corpo: { fornecedor, valorTotal, parcelasQuantidade, dataEntrada?, observacoes? }
+//   Corpo: { fornecedor, valorTotal, parcelasQuantidade, dataEntrada?, observacoes?,
+//            vencimentos? } — vencimentos é uma data por parcela; sem ele, os
+//            vencimentos seguem data_entrada + N meses
 //
 // A criação é UMA statement com CTEs (INSERT no boleto + INSERT nas parcelas):
 // o driver HTTP do Neon não abre transação interativa, e uma statement só já é
@@ -10,7 +12,13 @@
 import { sql } from './db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from './_http.js'
 import { exigirPermissao, registrarAudit } from './_auth.js'
-import { STATUS_BOLETO, montarBoleto } from './boletos/_lib.js'
+import {
+  STATUS_BOLETO,
+  hojeLocal,
+  montarBoleto,
+  montarVencimentos,
+  vencimentosForaDeOrdem,
+} from './boletos/_lib.js'
 
 const MODULO = 'Contas a Pagar'
 const LIMITE_PADRAO = 20
@@ -77,9 +85,16 @@ async function listar(req, res) {
 }
 
 async function criar(req, res, usuario) {
-  const dados = montarBoleto(await lerCorpo(req))
+  const corpo = await lerCorpo(req)
+  const dados = montarBoleto(corpo)
   if (dados.erro) return enviarErro(res, 400, dados.erro)
   const { fornecedor, dataEntrada, valorTotal, qtd, valorParcela, ultima, observacoes } = dados
+
+  // Vencimentos um a um são opcionais: sem eles vale data_entrada + N meses.
+  const v = montarVencimentos(corpo.vencimentos, { qtd, dataEntrada, hoje: hojeLocal() })
+  if (v.erro) return enviarErro(res, 400, v.erro)
+  // 'null' (e não NULL) porque o parâmetro é lido como jsonb dentro do SQL.
+  const datasJson = v.vencimentos ? JSON.stringify(v.vencimentos) : 'null'
 
   const linhas = await sql`
     WITH novo AS (
@@ -94,8 +109,12 @@ async function criar(req, res, usuario) {
       SELECT nb.id,
              g.i,
              CASE WHEN g.i < ${qtd}::int THEN ${valorParcela}::numeric ELSE ${ultima}::numeric END,
-             -- '+ interval mes' trata o fim de mes: 31/01 + 1 mes = 28/02.
-             (nb.data_entrada + (g.i || ' month')::interval)::date
+             CASE
+               WHEN jsonb_typeof(${datasJson}::jsonb) = 'array'
+                 THEN (${datasJson}::jsonb ->> (g.i - 1)::int)::date
+               -- '+ interval mes' trata o fim de mes: 31/01 + 1 mes = 28/02.
+               ELSE (nb.data_entrada + (g.i || ' month')::interval)::date
+             END
         FROM novo nb, generate_series(1, ${qtd}::int) AS g(i)
       RETURNING *
     )
@@ -113,5 +132,10 @@ async function criar(req, res, usuario) {
     detalhes: `Boleto de ${fornecedor}: R$ ${valorTotal.toFixed(2)} em ${qtd}x`,
   })
 
-  return enviarJson(res, 201, { boleto: { ...boleto, parcelas } })
+  return enviarJson(res, 201, {
+    boleto: { ...boleto, parcelas },
+    aviso: vencimentosForaDeOrdem(parcelas.map((p) => String(p.data_vencimento).slice(0, 10)))
+      ? 'As parcelas não estão em ordem crescente de vencimento.'
+      : null,
+  })
 }

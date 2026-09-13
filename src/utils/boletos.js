@@ -6,7 +6,14 @@ import { getJson, sendJson } from './api'
 // Regras puras (prévia de parcelas, normalização de data e de número) vivem em
 // boletosCalculo.js, sem dependência de rede, e são reexportadas aqui para as
 // telas importarem de um lugar só.
-export { MAX_PARCELAS, dataISO, num, previaParcelas } from './boletosCalculo'
+export {
+  MAX_PARCELAS,
+  dataISO,
+  num,
+  previaParcelas,
+  somarMeses,
+  vencimentosPadrao,
+} from './boletosCalculo'
 
 export const STATUS_BOLETO = ['SEM_VINCULO', 'VINCULADO', 'PAGO', 'CANCELADO']
 
@@ -17,8 +24,9 @@ export const ROTULO_STATUS = {
   CANCELADO: 'Cancelado',
 }
 
+// O schema usa ABERTO como status inicial da parcela (não PENDENTE).
 export const ROTULO_STATUS_PARCELA = {
-  PENDENTE: 'Pendente',
+  ABERTO: 'Aberto',
   PAGO: 'Pago',
   CANCELADO: 'Cancelado',
 }
@@ -34,7 +42,7 @@ export function classeBadge(status) {
       return 'badge badge-pago'
     case 'CANCELADO':
       return 'badge badge-cancelado'
-    case 'PENDENTE':
+    case 'ABERTO':
       return 'badge badge-a-pagar'
     default:
       return 'badge badge-sem-vinculo'

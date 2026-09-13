@@ -7,10 +7,11 @@
 //
 // Pegue o token no navegador, logado:  localStorage.getItem('cafe_do_bras_token')
 //
-// Cria um boleto, edita, cancela e confere cada passo. O boleto fica CANCELADO
-// no fim (exclusão lógica): some das listagens, mas a linha permanece no banco,
-// porque não existe exclusão física por API. ESCREVE NO BANCO APONTADO PELO
-// DEPLOY — em produção, isso é a base real.
+// Cria um boleto, edita, ajusta vencimentos, cancela e confere cada passo.
+// São criados DOIS boletos (o segundo com vencimentos irregulares) e ambos
+// terminam CANCELADOS (exclusão lógica): somem das listagens, mas as linhas
+// permanecem no banco, porque não existe exclusão física por API.
+// ESCREVE NO BANCO APONTADO PELO DEPLOY — em produção, isso é a base real.
 
 const TOKEN = process.argv[2]
 if (!TOKEN) {
@@ -111,6 +112,78 @@ async function main() {
     'soma das novas parcelas = 15000',
   )
   ok(e?.fornecedor === 'Café Brasil', 'fornecedor preservado (campo não enviado)', e?.fornecedor)
+
+  // ---------- 3b. PUT só com vencimentos ----------
+  // Datas relativas a hoje para o teste não apodrecer com o tempo.
+  const emDias = (d) => {
+    const h = new Date()
+    return new Date(Date.UTC(h.getUTCFullYear(), h.getUTCMonth(), h.getUTCDate() + d))
+      .toISOString()
+      .slice(0, 10)
+  }
+
+  console.log('\n3b. PUT /api/boletos/:id — ajusta só os vencimentos')
+  const idsAntes = e?.parcelas?.map((p) => p.id) || []
+  const datasNovas = [emDias(12), emDias(47), emDias(81), emDias(115), emDias(150)]
+  const soDatas = await api(`/boletos/${ID}`, 'PUT', { vencimentos: datasNovas })
+  ok(soDatas.status === 200, 'status 200', `${soDatas.status} ${soDatas.dados.error || ''}`)
+  ok(soDatas.dados.parcelasRefeitas === false, 'parcelasRefeitas = false (valor e qtd não mudaram)')
+  ok(soDatas.dados.vencimentosAtualizados === true, 'vencimentosAtualizados = true')
+  const pDatas = soDatas.dados.boleto?.parcelas || []
+  ok(
+    JSON.stringify(pDatas.map((p) => p.data_vencimento)) === JSON.stringify(datasNovas),
+    'as 5 datas informadas foram gravadas',
+    pDatas.map((p) => p.data_vencimento).join(' '),
+  )
+  // O id preservado é a prova de que foi UPDATE, e não DELETE + INSERT: é isso
+  // que faz um pagamento já lançado sobreviver à mudança de data.
+  ok(
+    JSON.stringify(pDatas.map((p) => p.id)) === JSON.stringify(idsAntes),
+    'as parcelas foram atualizadas, não recriadas (mesmos ids)',
+  )
+  ok(
+    pDatas.reduce((s, p) => s + n(p.valor), 0) === 15000,
+    'valores das parcelas intactos',
+  )
+
+  console.log('\n3c. PUT — vencimentos inválidos são recusados')
+  const passado = await api(`/boletos/${ID}`, 'PUT', {
+    vencimentos: [emDias(-5), ...datasNovas.slice(1)],
+  })
+  ok(passado.status === 400, 'data nova no passado → 400', String(passado.status))
+  const antesDaEntrada = await api(`/boletos/${ID}`, 'PUT', {
+    vencimentos: ['2026-09-01', ...datasNovas.slice(1)],
+  })
+  ok(antesDaEntrada.status === 400, 'data anterior à entrada → 400', String(antesDaEntrada.status))
+  const faltando = await api(`/boletos/${ID}`, 'PUT', { vencimentos: datasNovas.slice(0, 3) })
+  ok(faltando.status === 400, 'quantidade de datas diferente das parcelas → 400', String(faltando.status))
+  const intacto = await api(`/boletos/${ID}`)
+  ok(
+    JSON.stringify(intacto.dados.boleto?.parcelas?.map((p) => p.data_vencimento)) ===
+      JSON.stringify(datasNovas),
+    'nenhuma recusa alterou as datas gravadas',
+  )
+
+  console.log('\n3d. POST com vencimentos irregulares')
+  const irregular = await api('/boletos', 'POST', {
+    fornecedor: 'Café Brasil',
+    valorTotal: 900,
+    parcelasQuantidade: 3,
+    dataEntrada: '2026-09-10',
+    vencimentos: [emDias(9), emDias(23), emDias(44)],
+    observacoes: 'Teste ponta a ponta — pode cancelar',
+  })
+  ok(irregular.status === 201, 'status 201', `${irregular.status} ${irregular.dados.error || ''}`)
+  const ID2 = irregular.dados.boleto?.id
+  ok(
+    JSON.stringify(irregular.dados.boleto?.parcelas?.map((p) => p.data_vencimento)) ===
+      JSON.stringify([emDias(9), emDias(23), emDias(44)]),
+    'as datas informadas valeram no lugar do mês a mês',
+  )
+  if (ID2) {
+    const limpou = await api(`/boletos/${ID2}`, 'DELETE')
+    ok(limpou.status === 200, `boleto #${ID2} cancelado ao fim do teste`, String(limpou.status))
+  }
 
   // ---------- 4. GET confirma ----------
   console.log('\n4. GET /api/boletos/:id — confirma a edição')

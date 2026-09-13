@@ -64,6 +64,51 @@ export function dividirParcelas(valorTotal, qtd) {
   return { valorParcela, ultima }
 }
 
+// Data de hoje no fuso de Londrina. O runtime da Vercel roda em UTC: depois das
+// 21h daqui o "hoje" do servidor já é amanhã, e um vencimento para hoje seria
+// recusado como passado.
+export function hojeLocal(agora = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(agora)
+}
+
+// Vencimentos informados um a um (o boleto real raramente cai de 30 em 30
+// dias). Ausente = mantém a regra antiga, data_entrada + N meses.
+// `atuais` são os vencimentos já gravados, na ordem das parcelas.
+export function montarVencimentos(bruto, { qtd, dataEntrada, atuais = [], hoje = null }) {
+  if (bruto === undefined || bruto === null) return { vencimentos: null }
+  if (!Array.isArray(bruto)) return { erro: 'vencimentos deve ser uma lista de datas.' }
+  if (bruto.length !== qtd) {
+    return { erro: `Informe ${qtd} vencimento(s); vieram ${bruto.length}.` }
+  }
+
+  const vencimentos = []
+  for (let i = 0; i < bruto.length; i++) {
+    const data = String(bruto[i] ?? '').slice(0, 10)
+    const n = i + 1
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+      return { erro: `O vencimento da parcela ${n} deve estar no formato AAAA-MM-DD.` }
+    }
+    if (data <= dataEntrada) {
+      return {
+        erro: `O vencimento da parcela ${n} (${data}) tem de ser posterior à data de entrada (${dataEntrada}).`,
+      }
+    }
+    // Data no passado só passa se JÁ estava assim: senão seria impossível
+    // editar o fornecedor de um boleto antigo, cujas parcelas já venceram.
+    if (hoje && data < hoje && data !== atuais[i]) {
+      return { erro: `O vencimento da parcela ${n} (${data}) está no passado.` }
+    }
+    vencimentos.push(data)
+  }
+  return { vencimentos }
+}
+
+// Fora de ordem não bloqueia (o usuário pode ter um boleto assim mesmo); serve
+// para a resposta avisar.
+export function vencimentosForaDeOrdem(vencimentos = []) {
+  return vencimentos.some((d, i) => i > 0 && d < vencimentos[i - 1])
+}
+
 // Valida o corpo do PUT sobre o boleto atual. Só os campos presentes mudam.
 // Retorna { erro } ou os campos finais + `regenerar` (se as parcelas precisam
 // ser refeitas, ou seja, se o total ou a quantidade mudaram).

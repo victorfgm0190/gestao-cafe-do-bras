@@ -339,6 +339,57 @@
   max-width: 720px;
 }
 
+/* ---------- Vencimento por parcela ---------- */
+.bo-vencimentos {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  /* 12x já estoura a altura do modal: a lista rola sozinha. */
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.bo-vencimento {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: var(--creme);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.bo-vencimento-rot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--texto-sec);
+}
+
+.bo-vencimento-rot strong {
+  color: var(--verde);
+}
+
+.bo-vencimento input {
+  border: 1px solid var(--creme-escuro);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  font-size: 14px;
+  background: var(--branco);
+  color: var(--texto);
+}
+
+.bo-vencimento input:focus {
+  outline: none;
+  border-color: var(--dourado);
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.2);
+}
+
 @media (max-width: 620px) {
   .bo-filtro input,
   .bo-filtro select {

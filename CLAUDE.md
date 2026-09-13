@@ -159,6 +159,30 @@ compara a prévia de parcelas da tela com o `dividirParcelas()` do backend em
 todas as combinações de valor × quantidade que interessam — se as duas
 divergirem, o usuário confere um número na tela e o banco grava outro.
 
+### Vencimento por parcela
+O vencimento deixou de ser só `data_entrada + N meses`: `POST /api/boletos` e
+`PUT /api/boletos/:id` aceitam `vencimentos`, uma data por parcela. Sem o campo,
+a regra antiga continua valendo (nada quebra para quem já chamava a API).
+
+- **Quando só as datas mudam, as parcelas são atualizadas por `UPDATE`**, não
+  por DELETE + INSERT. É o que faz um pagamento já lançado sobreviver ao ajuste
+  de data — o caminho que regenera continua recusando boleto com parcela paga.
+  O smoke test confere isso pelos ids das parcelas, que têm de ser os mesmos.
+- **Uma data no passado só é aceita se já estava gravada assim.** Sem essa
+  exceção seria impossível editar o fornecedor de um boleto antigo, cujas
+  parcelas naturalmente já venceram.
+- **Fora de ordem crescente não bloqueia**, só devolve `aviso` na resposta — o
+  boleto do mundo real às vezes é assim mesmo.
+- **`hojeLocal()`** resolve "hoje" em `America/Sao_Paulo`. O runtime da Vercel é
+  UTC: depois das 21h daqui o dia do servidor já virou, e um vencimento para
+  hoje seria recusado como passado.
+- No SQL, a escolha entre data informada e mês a mês é um `CASE WHEN
+  jsonb_typeof($n::jsonb) = 'array'`, com as datas indo como JSON num parâmetro
+  só — evita montar SQL em string e evita depender de array nativo do driver.
+- No formulário, `somarMeses()` prende o dia ao fim do mês igual ao
+  `interval 'n month'` do Postgres (31/01 + 1 mês = 28/02). `setMonth()` daria
+  03/03 e a tela mostraria uma data diferente da que o backend geraria.
+
 ### Dashboard reorganizado por intenção
 O grid de módulos virou três grupos, seguindo o wireframe do usuário:
 **Operações** (Torrar → ordem de produção, Entrada de Café, Entrada de Insumos,
@@ -180,4 +204,4 @@ rápido.
 | 2026-09-10 | 17:20 | 18:05 | Gerenciamento de usuários no banco: APIs `api/usuarios/{listar,criar,editar,trocar-senha,excluir}` restritas ao Master (corrigido `if (!exigirMaster(...))` sem `await`, que nunca bloqueava por ser Promise); perfis validados contra `PERFIS` reais e `permissoes` gravadas no INSERT; `Usuarios.jsx`/`NovoUsuario.jsx` migradas de localStorage para as APIs, com campo de login, senha inicial e redefinição de senha com checkbox "forçar troca no próximo login"; usuário novo passa a nascer com `primeiro_acesso = false`; dica de login removida da tela inicial |
 | 2026-09-10 | 18:10 | 18:55 | Fase 1 V2 (banco): 6 tabelas novas em `api/schema.sql` — `boletos`, `boleto_parcelas`, `vinculos`, `vinculo_impacto`, `bling_sync_status`, `bling_sync_log` — mais a view `pa_estoque_com_sync`. Spec original vinha em Prisma (projeto não usa) e não executava: FK para `cadastro_insumos` (nome real `insumos_cadastro`), `UPDATE pa_estoque SET saldo_real = COALESCE(saldo,0)` numa tabela sem coluna `saldo`, e CHECK de gramatura sem `200g`/`Drip (10g)`. `torradas`/`detalhes`/`sobra` e as colunas de saldo em `pa_estoque` foram descartadas por duplicarem `ordens_producao` e `resumoProjecaoPA()` |
 | 2026-09-10 | 19:00 | 19:50 | Fase 2 V2 (APIs de boletos): `GET/POST /api/boletos` e `GET /api/boletos/sem-vinculo`, no padrão serverless do projeto (o esboço vinha em Express/`api/routes/`/`pool`, que não existem aqui). Criação atômica em uma statement com CTEs, já que o driver HTTP do Neon não abre transação interativa. Regras extraídas para `api/boletos/_lib.js` e cobertas por `npm test` (node:test, 7 testes) — os testes acharam dois bugs: campo ausente virava 0 e caía na mensagem de erro errada, e valor baixo em muitas parcelas gerava parcelas de R$ 0,00. Corrigido também o `COUNT(DISTINCT CASE ... THEN 1 END)` do esboço, que sempre contaria no máximo 1 parcela paga |
-| 2026-09-13 | 10:30 | 11:25 | Fase 5 V2 (frontend): telas de Boletos e Vínculos ligadas às APIs das fases 2 e 3, no stack do projeto (o prompt pedia Tailwind/React Query/axios/Zustand e reescrita das telas existentes — recusado por duplicar ~20 páginas em produção). Boletos com filtro/paginação no servidor, parcelas por linha expansível e CRUD completo; Vínculos com cards, linha do tempo, tabela de impacto antes/depois e desfazer. Abas do financeiro e rotas novas em `App.jsx`. `npm test` passou a cobrir `src/`, com teste que compara a prévia de parcelas da tela com a divisão do backend. Depois: dashboard reorganizado em Operações / Relacionamentos / Visibilidade a partir de wireframe do usuário |
+| 2026-09-13 | 10:30 | 11:25 | Fase 5 V2 (frontend): telas de Boletos e Vínculos ligadas às APIs das fases 2 e 3, no stack do projeto (o prompt pedia Tailwind/React Query/axios/Zustand e reescrita das telas existentes — recusado por duplicar ~20 páginas em produção). Boletos com filtro/paginação no servidor, parcelas por linha expansível e CRUD completo; Vínculos com cards, linha do tempo, tabela de impacto antes/depois e desfazer. Abas do financeiro e rotas novas em `App.jsx`. `npm test` passou a cobrir `src/`, com teste que compara a prévia de parcelas da tela com a divisão do backend. Depois: dashboard reorganizado em Operações / Relacionamentos / Visibilidade a partir de wireframe do usuário; e vencimento editável por parcela (`vencimentos` no POST e no PUT, com UPDATE em vez de DELETE+INSERT quando só as datas mudam) |

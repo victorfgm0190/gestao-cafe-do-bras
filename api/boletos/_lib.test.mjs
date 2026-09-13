@@ -4,7 +4,15 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { montarBoleto, montarEdicao, centavos, MAX_PARCELAS } from './_lib.js'
+import {
+  montarBoleto,
+  montarEdicao,
+  centavos,
+  MAX_PARCELAS,
+  hojeLocal,
+  montarVencimentos,
+  vencimentosForaDeOrdem,
+} from './_lib.js'
 
 // Soma das parcelas como o SQL as grava: (qtd-1) x valorParcela + ultima.
 function somaParcelas(d) {
@@ -148,4 +156,68 @@ test('PUT: recusa entradas inválidas', () => {
     assert.ok(d.erro, `deveria recusar: ${JSON.stringify(corpo)}`)
     assert.match(d.erro, esperado)
   }
+})
+
+/* ---------- Vencimentos informados um a um ---------- */
+
+const BASE = { qtd: 3, dataEntrada: '2026-09-13', hoje: '2026-09-13' }
+
+test('vencimentos: ausente mantém a regra antiga (data_entrada + N meses)', () => {
+  assert.equal(montarVencimentos(undefined, BASE).vencimentos, null)
+  assert.equal(montarVencimentos(null, BASE).vencimentos, null)
+})
+
+test('vencimentos: aceita uma data por parcela', () => {
+  const r = montarVencimentos(['2026-10-13', '2026-11-13', '2026-12-13'], BASE)
+  assert.deepEqual(r.vencimentos, ['2026-10-13', '2026-11-13', '2026-12-13'])
+})
+
+test('vencimentos: a quantidade tem de bater com a das parcelas', () => {
+  assert.match(montarVencimentos(['2026-10-13'], BASE).erro, /Informe 3 vencimento/)
+  assert.match(montarVencimentos('2026-10-13', BASE).erro, /lista de datas/)
+})
+
+test('vencimentos: recusa data anterior ou igual à entrada', () => {
+  const r = montarVencimentos(['2026-09-13', '2026-11-13', '2026-12-13'], BASE)
+  assert.match(r.erro, /parcela 1.*posterior à data de entrada/)
+})
+
+test('vencimentos: recusa formato fora de AAAA-MM-DD', () => {
+  const r = montarVencimentos(['13/10/2026', '2026-11-13', '2026-12-13'], BASE)
+  assert.match(r.erro, /parcela 1.*AAAA-MM-DD/)
+})
+
+test('vencimentos: data nova no passado é recusada', () => {
+  const r = montarVencimentos(['2026-09-01', '2026-11-13', '2026-12-13'], {
+    ...BASE,
+    dataEntrada: '2026-08-01',
+    atuais: ['2026-10-13', '2026-11-13', '2026-12-13'],
+  })
+  assert.match(r.erro, /parcela 1.*está no passado/)
+})
+
+// Esta é a que evita travar a edição de boleto antigo: as datas vencidas já
+// estavam gravadas, então reenviá-las sem mexer tem de passar.
+test('vencimentos: data no passado passa se já era a gravada', () => {
+  const atuais = ['2026-09-01', '2026-10-01', '2026-11-01']
+  const r = montarVencimentos(atuais, {
+    qtd: 3,
+    dataEntrada: '2026-08-01',
+    hoje: '2026-09-13',
+    atuais,
+  })
+  assert.deepEqual(r.vencimentos, atuais)
+})
+
+test('vencimentos: fora de ordem passa, mas é sinalizado', () => {
+  const datas = ['2026-12-13', '2026-10-13', '2026-11-13']
+  assert.deepEqual(montarVencimentos(datas, BASE).vencimentos, datas)
+  assert.equal(vencimentosForaDeOrdem(datas), true)
+  assert.equal(vencimentosForaDeOrdem(['2026-10-13', '2026-11-13']), false)
+})
+
+test('hojeLocal devolve a data de Londrina, não a do UTC', () => {
+  // 13/09/2026 00:30 UTC = 12/09/2026 21:30 em Londrina (UTC-3).
+  assert.equal(hojeLocal(new Date('2026-09-13T00:30:00Z')), '2026-09-12')
+  assert.match(hojeLocal(), /^\d{4}-\d{2}-\d{2}$/)
 })

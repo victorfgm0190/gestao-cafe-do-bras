@@ -1,6 +1,9 @@
 // GET    /api/boletos/:id → o boleto com as parcelas
 // PUT    /api/boletos/:id → edita; se o total, a quantidade ou a data de
-//        entrada mudarem, as parcelas são refeitas
+//        entrada mudarem, as parcelas são refeitas. `vencimentos` (uma data por
+//        parcela) permite datas irregulares; quando só elas mudam, as parcelas
+//        são atualizadas por UPDATE, sem apagar nada — assim um pagamento já
+//        lançado sobrevive à edição
 // DELETE /api/boletos/:id → exclusão lógica: excluido_em = agora,
 //        boleto e parcelas → CANCELADO
 //
@@ -12,7 +15,12 @@
 import { sql, transacao } from '../db.js'
 import { aplicarCors, enviarJson, enviarErro, garantirMetodo, lerCorpo } from '../_http.js'
 import { exigirPermissao, registrarAudit } from '../_auth.js'
-import { montarEdicao } from './_lib.js'
+import {
+  hojeLocal,
+  montarEdicao,
+  montarVencimentos,
+  vencimentosForaDeOrdem,
+} from './_lib.js'
 
 const MODULO = 'Contas a Pagar'
 
@@ -76,8 +84,27 @@ async function editar(req, res, atual, usuario) {
     return enviarErro(res, 409, 'Boleto cancelado não pode ser editado.')
   }
 
-  const d = montarEdicao(await lerCorpo(req), atual)
+  const corpo = await lerCorpo(req)
+  const d = montarEdicao(corpo, atual)
   if (d.erro) return enviarErro(res, 400, d.erro)
+
+  const parcelasAtuais = await parcelasDe(atual.id)
+  const v = montarVencimentos(corpo.vencimentos, {
+    qtd: d.qtd,
+    dataEntrada: d.dataEntrada,
+    atuais: parcelasAtuais.map((p) => p.data_vencimento),
+    hoje: hojeLocal(),
+  })
+  if (v.erro) return enviarErro(res, 400, v.erro)
+  // 'null' (e não NULL) porque o parâmetro é lido como jsonb dentro do SQL.
+  const datasJson = v.vencimentos ? JSON.stringify(v.vencimentos) : 'null'
+
+  // Mudou só a data das parcelas: dá para fazer por UPDATE, sem apagar linha
+  // nenhuma — e assim pagamento já lançado sobrevive à edição.
+  const soVencimentos =
+    !d.regenerar &&
+    v.vencimentos != null &&
+    v.vencimentos.some((data, i) => data !== parcelasAtuais[i]?.data_vencimento)
 
   // Refazer as parcelas apaga as antigas; se alguma já foi paga, o pagamento
   // sumiria junto. Nesse caso a edição é recusada em vez de perder histórico.
@@ -117,8 +144,22 @@ async function editar(req, res, atual, usuario) {
         SELECT ${atual.id}, g.i,
                CASE WHEN g.i < ${d.qtd}::int THEN ${d.valorParcela}::numeric
                     ELSE ${d.ultima}::numeric END,
-               (${d.dataEntrada}::date + (g.i || ' month')::interval)::date
+               CASE
+                 WHEN jsonb_typeof(${datasJson}::jsonb) = 'array'
+                   THEN (${datasJson}::jsonb ->> (g.i - 1)::int)::date
+                 ELSE (${d.dataEntrada}::date + (g.i || ' month')::interval)::date
+               END
           FROM generate_series(1, ${d.qtd}::int) AS g(i)
+      `,
+    ])
+  } else if (soVencimentos) {
+    await transacao([
+      atualizarBoleto,
+      sql`
+        UPDATE boleto_parcelas p
+           SET data_vencimento = v.data::date
+          FROM jsonb_array_elements_text(${datasJson}::jsonb) WITH ORDINALITY AS v(data, i)
+         WHERE p.boleto_id = ${atual.id} AND p.numero_parcela = v.i::int
       `,
     ])
   } else {
@@ -135,6 +176,7 @@ async function editar(req, res, atual, usuario) {
   if (d.dataEntrada !== atual.data_entrada) {
     mudancas.push(`entrada ${atual.data_entrada} → ${d.dataEntrada}`)
   }
+  if (soVencimentos) mudancas.push('vencimentos ajustados manualmente')
 
   await registrarAudit({
     usuario: usuario.nome,
@@ -144,9 +186,15 @@ async function editar(req, res, atual, usuario) {
   })
 
   const novo = await carregar(atual.id)
+  const parcelas = await parcelasDe(atual.id)
   return enviarJson(res, 200, {
-    boleto: { ...novo, parcelas: await parcelasDe(atual.id) },
+    boleto: { ...novo, parcelas },
     parcelasRefeitas: d.regenerar,
+    vencimentosAtualizados: soVencimentos,
+    // Fora de ordem não impede de salvar; a resposta só avisa.
+    aviso: vencimentosForaDeOrdem(parcelas.map((p) => p.data_vencimento))
+      ? 'As parcelas não estão em ordem crescente de vencimento.'
+      : null,
   })
 }
 

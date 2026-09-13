@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatarMoeda, hojeISO } from '../../utils/formato'
 import {
   MAX_PARCELAS,
@@ -6,7 +6,9 @@ import {
   dataISO,
   editarBoleto,
   num,
+  obterBoleto,
   previaParcelas,
+  vencimentosPadrao,
 } from '../../utils/boletos'
 import '../estoque/CafeCru.css'
 import './Boletos.css'
@@ -31,23 +33,73 @@ function formInicial(boleto) {
 }
 
 // Criação e edição de boleto. A validação definitiva é do backend
-// (api/boletos/_lib.js); aqui só evitamos o roundtrip óbvio e mostramos a
-// prévia de como o valor será dividido entre as parcelas.
+// (api/boletos/_lib.js); aqui só evitamos o roundtrip óbvio, mostramos a prévia
+// da divisão e deixamos ajustar o vencimento de cada parcela — boleto real
+// raramente vence de 30 em 30 dias.
 export default function ModalBoleto({ boleto, aoFechar, aoSalvar }) {
   const editando = !!boleto
   const [form, setForm] = useState(() => formInicial(boleto))
+  const [vencimentos, setVencimentos] = useState(() =>
+    boleto ? [] : vencimentosPadrao(hojeISO(), 1),
+  )
+  // Vencimentos como estão gravados hoje: data no passado só é recusada se for
+  // uma data NOVA (senão não daria para editar boleto antigo, já vencido).
+  const [vencimentosGravados, setVencimentosGravados] = useState([])
+  const [carregandoParcelas, setCarregandoParcelas] = useState(editando)
   const [erros, setErros] = useState({})
+  const [errosData, setErrosData] = useState({})
   const [erroApi, setErroApi] = useState('')
   const [salvando, setSalvando] = useState(false)
-
-  function campo(nome, valor) {
-    setForm((f) => ({ ...f, [nome]: valor }))
-    setErros((e) => ({ ...e, [nome]: undefined }))
-  }
 
   const valor = num(form.valorTotal)
   const qtd = Math.trunc(num(form.parcelasQuantidade))
   const previa = useMemo(() => previaParcelas(valor, qtd), [valor, qtd])
+
+  // Na edição as parcelas não vêm na linha da listagem — só no GET do boleto.
+  useEffect(() => {
+    if (!editando) return
+    let vivo = true
+    ;(async () => {
+      try {
+        const r = await obterBoleto(boleto.id)
+        if (!vivo) return
+        const datas = (r.boleto?.parcelas || []).map((p) => p.data_vencimento)
+        setVencimentos(datas)
+        setVencimentosGravados(datas)
+      } catch (e) {
+        if (vivo) setErroApi(e.message || 'Falha ao carregar as parcelas do boleto.')
+      } finally {
+        if (vivo) setCarregandoParcelas(false)
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [editando, boleto])
+
+  // Mudar quantidade ou data de entrada refaz as parcelas no backend, então as
+  // datas voltam para a sugestão mês a mês. A chave evita que isso dispare na
+  // carga inicial da edição e apague o que já estava gravado.
+  const chaveBase = useRef(`${form.dataEntrada}|${form.parcelasQuantidade}`)
+  useEffect(() => {
+    const chave = `${form.dataEntrada}|${qtd}`
+    if (chave === chaveBase.current) return
+    chaveBase.current = chave
+    if (qtd > 0 && qtd <= MAX_PARCELAS) {
+      setVencimentos(vencimentosPadrao(form.dataEntrada, qtd))
+      setErrosData({})
+    }
+  }, [form.dataEntrada, qtd])
+
+  function campo(nome, valorNovo) {
+    setForm((f) => ({ ...f, [nome]: valorNovo }))
+    setErros((e) => ({ ...e, [nome]: undefined }))
+  }
+
+  function mudarVencimento(indice, data) {
+    setVencimentos((v) => v.map((atual, i) => (i === indice ? data : atual)))
+    setErrosData((e) => ({ ...e, [indice]: undefined }))
+  }
 
   // Mexer em valor, quantidade ou data de entrada refaz as parcelas — e o
   // backend recusa (409) se alguma já estiver paga.
@@ -56,6 +108,8 @@ export default function ModalBoleto({ boleto, aoFechar, aoSalvar }) {
     (valor !== Number(boleto.valor_total) ||
       qtd !== Number(boleto.parcelas_quantidade) ||
       form.dataEntrada !== dataISO(boleto.data_entrada))
+
+  const foraDeOrdem = vencimentos.some((d, i) => i > 0 && d && d < vencimentos[i - 1])
 
   function validar() {
     const e = {}
@@ -67,8 +121,23 @@ export default function ModalBoleto({ boleto, aoFechar, aoSalvar }) {
     else if (valor > 0 && !previa) {
       e.parcelasQuantidade = 'Valor baixo demais para esse número de parcelas.'
     }
+
+    // Mesmas regras do montarVencimentos() do backend.
+    const eData = {}
+    const hoje = hojeISO()
+    vencimentos.forEach((data, i) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(data))) {
+        eData[i] = 'Informe a data.'
+      } else if (data <= form.dataEntrada) {
+        eData[i] = 'Tem de ser depois da data de entrada.'
+      } else if (data < hoje && data !== vencimentosGravados[i]) {
+        eData[i] = 'Data no passado.'
+      }
+    })
+
     setErros(e)
-    return Object.keys(e).length === 0
+    setErrosData(eData)
+    return Object.keys(e).length === 0 && Object.keys(eData).length === 0
   }
 
   async function salvar(evento) {
@@ -82,18 +151,21 @@ export default function ModalBoleto({ boleto, aoFechar, aoSalvar }) {
       valorTotal: valor,
       parcelasQuantidade: qtd,
       observacoes: form.observacoes.trim() || null,
+      vencimentos,
     }
     try {
       if (editando) {
         const r = await editarBoleto(boleto.id, corpo)
-        aoSalvar(
-          r.parcelasRefeitas
-            ? `Boleto #${boleto.id} atualizado — parcelas refeitas.`
-            : `Boleto #${boleto.id} atualizado.`,
-        )
+        const base = r.parcelasRefeitas
+          ? `Boleto #${boleto.id} atualizado — parcelas refeitas.`
+          : r.vencimentosAtualizados
+            ? `Boleto #${boleto.id} atualizado — vencimentos ajustados.`
+            : `Boleto #${boleto.id} atualizado.`
+        aoSalvar(r.aviso ? `${base} ${r.aviso}` : base)
       } else {
         const r = await criarBoleto(corpo)
-        aoSalvar(`Boleto #${r.boleto.id} criado com ${qtd} parcela(s).`)
+        const base = `Boleto #${r.boleto.id} criado com ${qtd} parcela(s).`
+        aoSalvar(r.aviso ? `${base} ${r.aviso}` : base)
       }
     } catch (e) {
       setErroApi(e.message || 'Falha ao salvar o boleto.')
@@ -182,9 +254,50 @@ export default function ModalBoleto({ boleto, aoFechar, aoSalvar }) {
                 </>
               )}
               <br />
-              Primeiro vencimento um mês após a data de entrada; a última parcela absorve a
-              diferença de centavos.
+              A última parcela absorve a diferença de centavos.
             </div>
+          )}
+
+          <div>
+            <span className="campo-label">Vencimento de cada parcela</span>
+            {carregandoParcelas ? (
+              <p className="campo-ajuda">Carregando as parcelas...</p>
+            ) : vencimentos.length === 0 ? (
+              <p className="campo-ajuda">Informe a quantidade de parcelas para ajustar as datas.</p>
+            ) : (
+              <div className="bo-vencimentos">
+                {vencimentos.map((data, i) => (
+                  <div key={i} className="bo-vencimento">
+                    <span className="bo-vencimento-rot">
+                      Parcela {i + 1}/{vencimentos.length}
+                      {previa && (
+                        <strong>
+                          {formatarMoeda(
+                            i === vencimentos.length - 1 ? previa.ultima : previa.valorParcela,
+                          )}
+                        </strong>
+                      )}
+                    </span>
+                    <input
+                      type="date"
+                      value={data || ''}
+                      onChange={(e) => mudarVencimento(i, e.target.value)}
+                    />
+                    {errosData[i] && <span className="campo-erro">{errosData[i]}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="campo-ajuda" style={{ marginTop: 8 }}>
+              Sugestão: um mês a partir da data de entrada. Ajuste conforme o boleto.
+            </p>
+          </div>
+
+          {foraDeOrdem && (
+            <p className="campo-ajuda">
+              As datas não estão em ordem crescente. Dá para salvar assim, só confira se é isso
+              mesmo.
+            </p>
           )}
 
           <label className="campo">
@@ -199,8 +312,8 @@ export default function ModalBoleto({ boleto, aoFechar, aoSalvar }) {
 
           {refazParcelas && (
             <p className="campo-ajuda">
-              Valor, quantidade ou data de entrada mudaram: as parcelas serão refeitas. Se alguma
-              já estiver paga, a edição é recusada.
+              Valor, quantidade ou data de entrada mudaram: as parcelas serão refeitas com as datas
+              acima. Se alguma já estiver paga, a edição é recusada.
             </p>
           )}
 
@@ -220,7 +333,11 @@ export default function ModalBoleto({ boleto, aoFechar, aoSalvar }) {
             <button type="button" className="btn btn-ghost" onClick={aoFechar} disabled={salvando}>
               Cancelar
             </button>
-            <button type="submit" className="btn btn-primary" disabled={salvando}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={salvando || carregandoParcelas}
+            >
               {salvando ? 'Salvando...' : editando ? 'Salvar alterações' : 'Criar boleto'}
             </button>
           </div>

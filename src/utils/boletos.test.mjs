@@ -4,7 +4,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { dataISO, num, previaParcelas } from './boletosCalculo.js'
+import { dataISO, num, previaParcelas, somarMeses, vencimentosPadrao } from './boletosCalculo.js'
 import { dividirParcelas, num as numServidor } from '../../api/boletos/_lib.js'
 
 test('previaParcelas concorda com dividirParcelas do backend', () => {
@@ -57,4 +57,23 @@ test('dataISO normaliza as duas formas que o Postgres devolve', () => {
   assert.equal(dataISO(new Date('2026-09-13T00:00:00.000Z')), '2026-09-13')
   assert.equal(dataISO(null), '')
   assert.equal(dataISO(undefined), '')
+})
+
+test('somarMeses prende o dia ao fim do mês, como o interval do Postgres', () => {
+  assert.equal(somarMeses('2026-01-31', 1), '2026-02-28')
+  assert.equal(somarMeses('2024-01-31', 1), '2024-02-29') // bissexto
+  assert.equal(somarMeses('2026-03-31', 1), '2026-04-30')
+  assert.equal(somarMeses('2026-12-13', 1), '2027-01-13') // vira o ano
+  assert.equal(somarMeses('2026-09-13', 3), '2026-12-13')
+  assert.equal(somarMeses('2026-09-13', 12), '2027-09-13')
+})
+
+test('vencimentosPadrao gera uma data por parcela, mês a mês', () => {
+  assert.deepEqual(vencimentosPadrao('2026-09-13', 3), [
+    '2026-10-13',
+    '2026-11-13',
+    '2026-12-13',
+  ])
+  assert.deepEqual(vencimentosPadrao('2026-09-13', 0), [])
+  assert.deepEqual(vencimentosPadrao('', 3), [])
 })
