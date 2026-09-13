@@ -97,7 +97,67 @@ Serverless da Vercel, um arquivo por rota (sem Express). Permissão: módulo
 `npm run test:e2e -- <token>` roda `api/boletos/_e2e.mjs` contra um deploy de verdade: cria, lista, edita, cancela e confere cada passo (27 verificações). **Escreve no banco do deploy apontado** — em produção é a base real; o boleto criado termina CANCELADO. Aponte para um preview com `API_BASE=https://<preview>.vercel.app/api`. Não entra no `npm test` porque o nome não termina em `.test.mjs`.
 `api/boletos/_lib.test.mjs` cobre a divisão em centavos — incluindo a propriedade "soma das parcelas = total" em ~2.300 combinações — e a mesclagem do PUT, com `atual` no formato que o Postgres devolve (`numeric` como string), para garantir que `'12000.00'` vs `12000` não dispare regeneração à toa.
 
-### Próxima: PUT/DELETE de boletos e `POST /api/vinculos` (com cascata)
+### Concluído depois: PUT/DELETE de boletos e `POST /api/vinculos` (com cascata)
+
+## Fase 5 (V2) — Frontend de boletos e vínculos
+
+O app já tinha frontend para quase tudo (dashboard, café cru, torrado, PA,
+insumos, inventário, usuários, auditoria, Bling). O que faltava tela eram
+justamente as APIs das fases 2 e 3. **Não** foram adicionadas dependências: nada
+de Tailwind, React Query, axios ou Zustand — as telas seguem o padrão do
+projeto (React + `fetch` via `src/utils/api.js` + CSS com as variáveis da
+paleta, reaproveitando as classes `kx-*`/`cc-*` de `CafeCru.css`).
+
+| Arquivo | Papel |
+|---------|-------|
+| `src/pages/financeiro/Boletos.jsx` | Lista com filtros, paginação, linha expansível com as parcelas, criar/editar/cancelar e o botão de vincular |
+| `src/pages/financeiro/ModalBoleto.jsx` | Formulário de criação e edição, com prévia da divisão em parcelas |
+| `src/pages/financeiro/ModalVinculo.jsx` | Escolhe o lote, mostra o custo/kg antes e depois e exibe o impacto devolvido pelo POST |
+| `src/pages/financeiro/Vinculos.jsx` | Cards dos vínculos, modal com linha do tempo, tabela de impacto (antes/depois) e o desfazer |
+| `src/pages/financeiro/AbasFinanceiro.jsx` | Abas Contas a pagar · Boletos · Vínculos |
+| `src/utils/boletos.js` / `src/utils/vinculos.js` | Camada de dados (as telas não montam URL nem header na mão) |
+| `src/utils/boletosCalculo.js` | Regras puras (prévia de parcelas, normalização de data/número), sem rede — para poder testar no node |
+
+Rotas novas em `App.jsx`: `/financeiro/boletos` e `/financeiro/vinculos`, ambas
+dentro de `RotaProtegida`.
+
+### Decisões
+- **Sem `registrarLog()` nas telas novas.** As rotas de boleto e vínculo já
+  chamam `registrarAudit` no backend; logar no front duplicaria a auditoria.
+- **Filtro e paginação no servidor, ordenação no cliente.** `GET /api/boletos`
+  aceita `status`, `fornecedor`, `pagina` e `limite`, mas não tem parâmetro de
+  ordenação — então clicar no cabeçalho reordena só a página carregada, e a
+  tela diz isso. Busca por valor ficou de fora pelo mesmo motivo: seria
+  page-scoped e esconderia registros das outras páginas.
+- **`CANCELADO` não aparece no filtro de status.** O DELETE grava
+  `excluido_em` junto com o status, e a listagem filtra `excluido_em IS NULL` —
+  o filtro nunca devolveria nada.
+- **As parcelas só vêm no `GET /api/boletos/:id`**, então são carregadas ao
+  expandir a linha e ficam em cache até a próxima alteração.
+- **`dataISO()`**: a listagem devolve `b.*` cru e o `DATE` do Postgres chega ora
+  como `'AAAA-MM-DD'`, ora como `Date` serializado; o detalhe já vem por
+  `to_char`. O normalizador cobre os dois.
+- **Custo/kg formatado com até 4 casas** (`formatarCustoKg`): `DECIMAL(14,4)`
+  arredondado para centavos faria o antes e o depois da cascata parecerem
+  iguais na tabela de impacto.
+- **Aviso ao editar boleto já vinculado.** O `PUT` não refaz a cascata: o lote
+  continuaria com o custo derivado do valor antigo. A tela avisa e manda
+  desfazer/refazer o vínculo.
+
+### Limitações conhecidas (backend, não tela)
+- **Não existe rota para dar baixa em parcela.** A coluna de status da parcela é
+  só leitura; `parcelas_pagas` sempre será 0 até existir um `PATCH` de parcela.
+- **O seletor de lotes usa `GET /api/cafe-cru/lotes`, que exige o módulo
+  "Estoque MP"**, enquanto boletos e vínculos exigem "Contas a Pagar". O perfil
+  Financeiro cria boletos mas leva 403 ao abrir o modal de vínculo — a tela
+  mostra o erro explicando qual permissão falta. Resolver de verdade pede uma
+  rota de lotes que aceite também "Contas a Pagar".
+
+### Testes
+`npm test` agora roda também `src/**/*.test.mjs`. `src/utils/boletos.test.mjs`
+compara a prévia de parcelas da tela com o `dividirParcelas()` do backend em
+todas as combinações de valor × quantidade que interessam — se as duas
+divergirem, o usuário confere um número na tela e o banco grava outro.
 
 ## Registro de sessões
 | Data | Início | Fim | O que foi feito |
@@ -107,3 +167,4 @@ Serverless da Vercel, um arquivo por rota (sem Express). Permissão: módulo
 | 2026-09-10 | 17:20 | 18:05 | Gerenciamento de usuários no banco: APIs `api/usuarios/{listar,criar,editar,trocar-senha,excluir}` restritas ao Master (corrigido `if (!exigirMaster(...))` sem `await`, que nunca bloqueava por ser Promise); perfis validados contra `PERFIS` reais e `permissoes` gravadas no INSERT; `Usuarios.jsx`/`NovoUsuario.jsx` migradas de localStorage para as APIs, com campo de login, senha inicial e redefinição de senha com checkbox "forçar troca no próximo login"; usuário novo passa a nascer com `primeiro_acesso = false`; dica de login removida da tela inicial |
 | 2026-09-10 | 18:10 | 18:55 | Fase 1 V2 (banco): 6 tabelas novas em `api/schema.sql` — `boletos`, `boleto_parcelas`, `vinculos`, `vinculo_impacto`, `bling_sync_status`, `bling_sync_log` — mais a view `pa_estoque_com_sync`. Spec original vinha em Prisma (projeto não usa) e não executava: FK para `cadastro_insumos` (nome real `insumos_cadastro`), `UPDATE pa_estoque SET saldo_real = COALESCE(saldo,0)` numa tabela sem coluna `saldo`, e CHECK de gramatura sem `200g`/`Drip (10g)`. `torradas`/`detalhes`/`sobra` e as colunas de saldo em `pa_estoque` foram descartadas por duplicarem `ordens_producao` e `resumoProjecaoPA()` |
 | 2026-09-10 | 19:00 | 19:50 | Fase 2 V2 (APIs de boletos): `GET/POST /api/boletos` e `GET /api/boletos/sem-vinculo`, no padrão serverless do projeto (o esboço vinha em Express/`api/routes/`/`pool`, que não existem aqui). Criação atômica em uma statement com CTEs, já que o driver HTTP do Neon não abre transação interativa. Regras extraídas para `api/boletos/_lib.js` e cobertas por `npm test` (node:test, 7 testes) — os testes acharam dois bugs: campo ausente virava 0 e caía na mensagem de erro errada, e valor baixo em muitas parcelas gerava parcelas de R$ 0,00. Corrigido também o `COUNT(DISTINCT CASE ... THEN 1 END)` do esboço, que sempre contaria no máximo 1 parcela paga |
+| 2026-09-13 | 10:30 | 11:25 | Fase 5 V2 (frontend): telas de Boletos e Vínculos ligadas às APIs das fases 2 e 3, no stack do projeto (o prompt pedia Tailwind/React Query/axios/Zustand e reescrita das telas existentes — recusado por duplicar ~20 páginas em produção). Boletos com filtro/paginação no servidor, parcelas por linha expansível e CRUD completo; Vínculos com cards, linha do tempo, tabela de impacto antes/depois e desfazer. Abas do financeiro e rotas novas em `App.jsx`. `npm test` passou a cobrir `src/`, com teste que compara a prévia de parcelas da tela com a divisão do backend |

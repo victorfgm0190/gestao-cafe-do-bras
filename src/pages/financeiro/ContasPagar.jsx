@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import Topbar from '../../components/Topbar'
+import AbasFinanceiro from './AbasFinanceiro'
 import { formatarMoeda, formatarData, hojeISO } from '../../utils/formato'
 import { registrarLog, ACOES } from '../../utils/auditoria'
 import { nomeUsuarioAtual } from '../../utils/permissoes'
@@ -312,6 +313,8 @@ export default function ContasPagar() {
             + Nova conta
           </button>
         </div>
+
+        <AbasFinanceiro />
 
         {/* Cards de resumo */}
         <div className="cp-cards">

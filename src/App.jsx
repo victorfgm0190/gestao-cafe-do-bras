@@ -4,6 +4,8 @@ import { usuarioLogado } from './utils/permissoes'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import ContasPagar from './pages/financeiro/ContasPagar'
+import Boletos from './pages/financeiro/Boletos'
+import Vinculos from './pages/financeiro/Vinculos'
 import EstoqueIndex from './pages/estoque/EstoqueIndex'
 import EntradaCafe from './pages/estoque/EntradaCafe'
 import CafeCruCadastro from './pages/estoque/CafeCruCadastro'
@@ -72,6 +74,22 @@ export default function App() {
         element={
           <RotaProtegida>
             <ContasPagar />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/financeiro/boletos"
+        element={
+          <RotaProtegida>
+            <Boletos />
+          </RotaProtegida>
+        }
+      />
+      <Route
+        path="/financeiro/vinculos"
+        element={
+          <RotaProtegida>
+            <Vinculos />
           </RotaProtegida>
         }
       />
