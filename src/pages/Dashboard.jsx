@@ -8,77 +8,102 @@ import { lotesCruDisponiveis, resumoPAEstoque, resumoProjecaoPA } from '../utils
 import { carregarEstoqueTorrado } from '../utils/torrado'
 import './Dashboard.css'
 
-const MODULOS = [
+// A navegação é agrupada pelo que o usuário quer FAZER, não por módulo do
+// sistema: o que se registra no dia a dia (Operações), o que amarra custo entre
+// os registros (Relacionamentos) e o que só se consulta (Visibilidade).
+const GRUPOS = [
   {
-    chave: 'financeiro',
-    nome: 'Financeiro',
-    descricao: 'Contas a pagar, receber e fluxo de caixa.',
-    icone: '💰',
-    rota: '/financeiro/contas-pagar',
-    disponivel: true,
-  },
-  {
-    chave: 'estoque',
-    nome: 'Estoque',
-    descricao: 'Café verde, embalagens e insumos.',
-    icone: '📦',
-    rota: '/estoque',
-    disponivel: true,
-  },
-  {
-    chave: 'inventario',
-    nome: 'Inventário',
-    descricao: 'Contagem física, diferenças e regularização.',
+    chave: 'operacoes',
+    titulo: 'Operações',
     icone: '📋',
-    rota: '/inventario',
-    disponivel: true,
+    itens: [
+      {
+        chave: 'torrar',
+        nome: 'Torrar',
+        descricao: 'Ordem de produção: torra, embalagem, perda e custo por unidade.',
+        icone: '🔥',
+        rota: '/estoque/pa/ordem',
+      },
+      {
+        chave: 'entrada-cafe',
+        nome: 'Entrada de Café',
+        descricao: 'Recebimento de café verde por saca ou por peso.',
+        icone: '☕',
+        rota: '/estoque/entrada-cafe',
+      },
+      {
+        chave: 'entrada-insumos',
+        nome: 'Entrada de Insumos',
+        descricao: 'Compra de embalagens, etiquetas e caixas.',
+        icone: '📦',
+        rota: '/estoque/insumos/entrada',
+      },
+      {
+        chave: 'entrada-boletos',
+        nome: 'Entrada de Boletos',
+        descricao: 'Boleto do fornecedor e as parcelas geradas a partir dele.',
+        icone: '💰',
+        rota: '/financeiro/boletos',
+      },
+      {
+        chave: 'inventario',
+        nome: 'Inventário',
+        descricao: 'Contagem física, diferenças e regularização.',
+        icone: '📊',
+        rota: '/inventario',
+      },
+    ],
   },
   {
-    chave: 'torrefacao',
-    nome: 'Torrefação',
-    descricao: 'Perfis de torra, lotes e curvas.',
-    icone: '🔥',
-    disponivel: false,
-  },
-  {
-    chave: 'vendas',
-    nome: 'Vendas',
-    descricao: 'Pedidos, clientes e faturamento.',
-    icone: '🛒',
-    disponivel: false,
-  },
-  {
-    chave: 'relatorios',
-    nome: 'Relatórios',
-    descricao: 'Indicadores e análises do negócio.',
-    icone: '📊',
-    disponivel: false,
-  },
-  {
-    chave: 'integracoes',
-    nome: 'Integrações',
-    descricao: 'Bling: pedidos, produtos, estoque e financeiro.',
+    chave: 'relacionamentos',
+    titulo: 'Relacionamentos',
     icone: '🔗',
-    rota: '/integracoes/bling',
-    disponivel: true,
+    itens: [
+      {
+        chave: 'vinculos',
+        nome: 'Boletos × Café × Insumos',
+        descricao: 'Liga o boleto ao lote e propaga o custo em cascata até o produto embalado.',
+        icone: '⛓️',
+        rota: '/financeiro/vinculos',
+      },
+    ],
   },
   {
-    chave: 'usuarios',
-    nome: 'Usuários',
-    descricao: 'Usuários, perfis e permissões de acesso.',
-    icone: '👥',
-    rota: '/usuarios',
-    disponivel: true,
-    soMaster: true,
-  },
-  {
-    chave: 'auditoria',
-    nome: 'Auditoria',
-    descricao: 'Log imutável de operações do sistema.',
-    icone: '🛡️',
-    rota: '/auditoria',
-    disponivel: true,
-    soMaster: true,
+    chave: 'visibilidade',
+    titulo: 'Visibilidade',
+    icone: '📈',
+    itens: [
+      {
+        chave: 'relatorios',
+        nome: 'Relatórios',
+        descricao: 'Indicadores e análises do negócio.',
+        icone: '📊',
+        disponivel: false,
+      },
+      {
+        chave: 'bling',
+        nome: 'Integrações (Bling)',
+        descricao: 'Pedidos, produtos, estoque e financeiro.',
+        icone: '🔌',
+        rota: '/integracoes/bling',
+      },
+      {
+        chave: 'usuarios',
+        nome: 'Usuários',
+        descricao: 'Usuários, perfis e permissões de acesso.',
+        icone: '👥',
+        rota: '/usuarios',
+        soMaster: true,
+      },
+      {
+        chave: 'auditoria',
+        nome: 'Auditoria',
+        descricao: 'Log imutável de operações do sistema.',
+        icone: '📝',
+        rota: '/auditoria',
+        soMaster: true,
+      },
+    ],
   },
 ]
 
@@ -87,8 +112,12 @@ export default function Dashboard() {
   const usuario = getUsuario()
   const master = ehMaster()
 
-  // Módulos administrativos (soMaster) só aparecem para o perfil Master
-  const modulosVisiveis = MODULOS.filter((m) => !m.soMaster || master)
+  // Itens administrativos (soMaster) só aparecem para o perfil Master; um grupo
+  // que ficasse sem nenhum item visível não é renderizado.
+  const gruposVisiveis = GRUPOS.map((g) => ({
+    ...g,
+    itens: g.itens.filter((i) => !i.soMaster || master),
+  })).filter((g) => g.itens.length > 0)
 
   // Resumo de estoque rápido
   const [cruKg, setCruKg] = useState(0)
@@ -149,9 +178,9 @@ export default function Dashboard() {
     }
   }, [])
 
-  function abrir(modulo) {
-    if (modulo.disponivel && modulo.rota) {
-      navigate(modulo.rota)
+  function abrir(item) {
+    if (item.disponivel !== false && item.rota) {
+      navigate(item.rota)
     }
   }
 
@@ -212,29 +241,37 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <h2 className="dash-secao">Módulos</h2>
-        <div className="dash-grid">
-          {modulosVisiveis.map((m) => (
-            <button
-              key={m.chave}
-              className={`modulo-card ${m.disponivel ? 'disponivel' : 'em-breve'}`}
-              onClick={() => abrir(m)}
-              disabled={!m.disponivel}
-            >
-              <div className="modulo-topo">
-                <span className="modulo-icone">{m.icone}</span>
-                {m.disponivel ? (
-                  <span className="modulo-tag tag-ok">Disponível</span>
-                ) : (
-                  <span className="modulo-tag tag-breve">Em breve</span>
-                )}
-              </div>
-              <h3 className="modulo-nome">{m.nome}</h3>
-              <p className="modulo-descricao">{m.descricao}</p>
-              {m.disponivel && <span className="modulo-acao">Acessar →</span>}
-            </button>
-          ))}
-        </div>
+        {gruposVisiveis.map((g) => (
+          <section key={g.chave} className="dash-grupo">
+            <h2 className="dash-secao">
+              <span className="dash-grupo-icone">{g.icone}</span> {g.titulo}
+            </h2>
+            <div className="dash-grupo-itens">
+              {g.itens.map((i) => {
+                const disponivel = i.disponivel !== false
+                return (
+                  <button
+                    key={i.chave}
+                    className={`dash-item ${disponivel ? 'disponivel' : 'em-breve'}`}
+                    onClick={() => abrir(i)}
+                    disabled={!disponivel}
+                  >
+                    <span className="dash-item-icone">{i.icone}</span>
+                    <span className="dash-item-texto">
+                      <span className="dash-item-nome">{i.nome}</span>
+                      <span className="dash-item-desc">{i.descricao}</span>
+                    </span>
+                    {disponivel ? (
+                      <span className="dash-item-seta">→</span>
+                    ) : (
+                      <span className="dash-item-tag">Em breve</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        ))}
       </main>
     </div>
   )
