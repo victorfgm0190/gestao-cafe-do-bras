@@ -4,6 +4,7 @@ import Topbar from '../../components/Topbar'
 import { registrarLog, ACOES } from '../../utils/auditoria'
 import { nomeUsuarioAtual } from '../../utils/permissoes'
 import { apiUrl, authHeaders } from '../../utils/api'
+import SyncBling from './SyncBling'
 import './Bling.css'
 
 const CHAVE_HISTORICO = 'cafe_do_bras_bling_sync'
@@ -287,6 +288,8 @@ export default function Bling() {
             </button>
           </div>
         </div>
+
+        <SyncBling conectado={conectado} />
 
         {(ocupado === 'produtos' || produtos.length > 0) && (
           <section className="bl-catalogo">

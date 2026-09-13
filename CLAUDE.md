@@ -196,6 +196,63 @@ ficou inalcançável: cada destino dela é servido pelas abas das próprias tela
 (`AbasCafeCru`, `AbasInsumos`, `AbasPA`, `AbasTorrado`) ou pelos cards de estoque
 rápido.
 
+## Fase 6 (V2) — Sincronização de estoque com o Bling
+
+Rotas novas em `api/bling/sync/` (serverless, um arquivo por rota). Módulo
+exigido: **Estoque PA** (`visualizar` para ler, `editar` para escrever).
+
+| Rota | O que faz |
+|------|-----------|
+| `GET /api/bling/sync/mapa` | Diagnóstico: mostra que variação casaria com qual (produto, gramatura), sem gravar. `?gravado=1` devolve o mapa já salvo sem chamar o Bling |
+| `POST /api/bling/sync/mapa` | Grava o mapa em `bling_sync_status.bling_variacao_id` |
+| `GET /api/bling/sync/divergencias` | Compara saldo local × Bling por (produto, gramatura). Só leitura |
+| `POST /api/bling/sync/push-producao` | Envia saldo ao Bling. **Simula** por padrão; só escreve com `confirmar: true` |
+| `POST /api/bling/sync/pull-venda` | Baixa vendas do Bling do estoque. **Simula** por padrão; idempotente |
+
+### O que já existia e não foi refeito
+`api/bling/auth.js` **já renovava o token sozinho** desde a integração original:
+`getToken()` troca o refresh quando o access expira no Redis, e `blingFetch()`
+renova em 401 e faz retry em 429 com `Retry-After`. A "Fase 1" do prompt pedia
+exatamente isso, mas com `client_id`/`client_secret` em body JSON — o token
+endpoint do Bling v3 exige Basic auth + form-urlencoded. Aplicar teria
+**quebrado** a renovação.
+
+O buraco que sobra é outro: o refresh_token tem TTL de 30 dias no Redis. Se a
+integração ficar 30 dias sem uso, expira e precisa reconectar na mão. A solução
+é um cron semanal chamando a renovação — não foi feito.
+
+### Decisões
+- **Gramatura é variação no Bling.** `pa_cadastro.bling_id` é o produto PAI; o
+  saldo vive na variação. Por isso o mapa: sem ele não há como falar de "250g do
+  Bourbon". `gramaturaDeTexto()` extrai a gramatura do nome/código da variação e
+  devolve `null` quando não reconhece — o não reconhecido é reportado, nunca
+  chutado.
+- **O push envia só saldo**, via `POST /estoques` com `operacao: 'B'`. Nome e
+  preço ficam de fora de propósito: `PUT /produtos` com corpo parcial renomeia o
+  produto, e preço = custo × margem sobrescreveria o preço real da loja — ainda
+  por cima a partir de `custo_unitario`, que é por pacote e pode conter custo por
+  kg depois de um vínculo de boleto.
+- **O pull lança movimento negativo** via `ajustarEstoquePA()`, nunca
+  `UPDATE pa_estoque SET quantidade = ...`: a tabela é razão, uma linha por
+  movimento, e o UPDATE reescreveria o histórico inteiro do produto.
+- **Idempotência do pull:** `bling_pedidos_processados` (PK = id do pedido). O
+  pedido é reivindicado ANTES de aplicar — baixar de menos se conserta à mão,
+  baixar em dobro corrompe o estoque em silêncio.
+- **Push e pull simulam por padrão.** A prévia mostra "Bling hoje → passa a ser"
+  e só o botão de confirmar aplica.
+- **Divergência não entra em `bling_sync_log`:** o CHECK da tabela só aceita
+  `PUSH_PRODUCAO | PULL_VENDA | AJUSTE_DIVERGENCIA`, e conferir não é ajustar. O
+  resultado vai para `bling_sync_status`. Pelo mesmo motivo, a severidade
+  (OK/AVISO/CRÍTICO) fica na resposta, não na coluna `status_divergencia`, cujo
+  CHECK só aceita `SINCRONIZADO | DIVERGENCIA | AJUSTANDO`.
+
+### A confirmar com dados reais
+O nome da variação é o único elo com a gramatura (o import já separava pai de
+variação por conter "Grão:"). O parser cobre `250g`, `200 g`, `1kg`, `1000g`,
+`0,25kg`, `Drip`/`Sachê`. Se o catálogo usar outro padrão, o `GET` do mapa lista
+tudo em `naoReconhecidas` — é ali que se vê antes de gravar. Os campos do item
+do pedido (`produto.id` / `codigo`) também são resolvidos com fallback.
+
 ## Registro de sessões
 | Data | Início | Fim | O que foi feito |
 |------|--------|-----|-----------------|
@@ -205,3 +262,4 @@ rápido.
 | 2026-09-10 | 18:10 | 18:55 | Fase 1 V2 (banco): 6 tabelas novas em `api/schema.sql` — `boletos`, `boleto_parcelas`, `vinculos`, `vinculo_impacto`, `bling_sync_status`, `bling_sync_log` — mais a view `pa_estoque_com_sync`. Spec original vinha em Prisma (projeto não usa) e não executava: FK para `cadastro_insumos` (nome real `insumos_cadastro`), `UPDATE pa_estoque SET saldo_real = COALESCE(saldo,0)` numa tabela sem coluna `saldo`, e CHECK de gramatura sem `200g`/`Drip (10g)`. `torradas`/`detalhes`/`sobra` e as colunas de saldo em `pa_estoque` foram descartadas por duplicarem `ordens_producao` e `resumoProjecaoPA()` |
 | 2026-09-10 | 19:00 | 19:50 | Fase 2 V2 (APIs de boletos): `GET/POST /api/boletos` e `GET /api/boletos/sem-vinculo`, no padrão serverless do projeto (o esboço vinha em Express/`api/routes/`/`pool`, que não existem aqui). Criação atômica em uma statement com CTEs, já que o driver HTTP do Neon não abre transação interativa. Regras extraídas para `api/boletos/_lib.js` e cobertas por `npm test` (node:test, 7 testes) — os testes acharam dois bugs: campo ausente virava 0 e caía na mensagem de erro errada, e valor baixo em muitas parcelas gerava parcelas de R$ 0,00. Corrigido também o `COUNT(DISTINCT CASE ... THEN 1 END)` do esboço, que sempre contaria no máximo 1 parcela paga |
 | 2026-09-13 | 10:30 | 11:25 | Fase 5 V2 (frontend): telas de Boletos e Vínculos ligadas às APIs das fases 2 e 3, no stack do projeto (o prompt pedia Tailwind/React Query/axios/Zustand e reescrita das telas existentes — recusado por duplicar ~20 páginas em produção). Boletos com filtro/paginação no servidor, parcelas por linha expansível e CRUD completo; Vínculos com cards, linha do tempo, tabela de impacto antes/depois e desfazer. Abas do financeiro e rotas novas em `App.jsx`. `npm test` passou a cobrir `src/`, com teste que compara a prévia de parcelas da tela com a divisão do backend. Depois: dashboard reorganizado em Operações / Relacionamentos / Visibilidade a partir de wireframe do usuário; e vencimento editável por parcela (`vencimentos` no POST e no PUT, com UPDATE em vez de DELETE+INSERT quando só as datas mudam) |
+| 2026-09-13 | 11:30 | 13:10 | Fase 6 V2 (Bling): mapa de variações, divergências, push e pull de estoque em `api/bling/sync/`, mais a aba de sincronização na tela do Bling. O prompt vinha em Express/`pg` e traria três corrupções de dados: `UPDATE pa_estoque` numa tabela que é razão, push de preço = custo × 1,5 sobrescrevendo o preço real da loja, e INSERTs em `bling_sync_log` sem `origem` (NOT NULL) e com `tipo` fora do CHECK. A Fase 1 (auto-refresh) já existia e teria sido quebrada se aplicada. Push e pull simulam por padrão; pull é idempotente por `bling_pedidos_processados` |

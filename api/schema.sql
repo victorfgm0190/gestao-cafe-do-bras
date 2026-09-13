@@ -466,6 +466,10 @@ CREATE TABLE IF NOT EXISTS bling_sync_status (
 );
 CREATE INDEX IF NOT EXISTS idx_bling_sync_status_produto ON bling_sync_status (produto_id);
 CREATE INDEX IF NOT EXISTS idx_bling_sync_status_divergencia ON bling_sync_status (status_divergencia);
+-- Migração: id da VARIAÇÃO do Bling por (produto, gramatura). pa_cadastro.bling_id
+-- guarda o produto PAI; o saldo, porém, vive na variação. Idempotente.
+ALTER TABLE bling_sync_status ADD COLUMN IF NOT EXISTS bling_variacao_id bigint;
+ALTER TABLE bling_sync_status ADD COLUMN IF NOT EXISTS bling_codigo text;
 
 
 -- ============================================================================
@@ -494,6 +498,22 @@ CREATE TABLE IF NOT EXISTS bling_sync_log (
 CREATE INDEX IF NOT EXISTS idx_bling_sync_log_tipo ON bling_sync_log (tipo);
 CREATE INDEX IF NOT EXISTS idx_bling_sync_log_status ON bling_sync_log (status);
 CREATE INDEX IF NOT EXISTS idx_bling_sync_log_criado_em ON bling_sync_log (criado_em DESC);
+
+
+-- ============================================================================
+-- BLING — PEDIDOS JÁ PROCESSADOS
+-- Guarda-chuva de idempotência do pull de vendas: sem isto, rodar o pull duas
+-- vezes baixaria o mesmo pedido duas vezes do estoque. O pedido é gravado ANTES
+-- de a baixa ser aplicada — baixar de menos se conserta à mão, baixar em dobro
+-- corrompe o estoque em silêncio.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS bling_pedidos_processados (
+  bling_pedido_id BIGINT PRIMARY KEY,
+  numero TEXT,
+  data DATE,
+  itens_aplicados INTEGER NOT NULL DEFAULT 0,
+  processado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
 
 
 -- ============================================================================

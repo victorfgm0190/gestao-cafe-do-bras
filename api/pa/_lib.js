@@ -153,7 +153,16 @@ export async function calcularOrdem(input) {
 
 // Ajuste avulso de estoque de PA (usado pelo inventário: sobra ou saída não
 // identificada). quantidade positiva = entrada; negativa = saída.
-export async function ajustarEstoquePA({ paId, gramatura, quantidade, descricao, data }) {
+// `origem` distingue a procedência do movimento na coluna pa_estoque.origem
+// ('inventario' nos ajustes de contagem, 'bling' na baixa de venda importada).
+export async function ajustarEstoquePA({
+  paId,
+  gramatura,
+  quantidade,
+  descricao,
+  data,
+  origem = 'inventario',
+}) {
   const q = num(quantidade)
   const dataRef = data || new Date().toISOString().slice(0, 10)
   // A coluna gramatura é TEXT: gravamos/comparamos pelo rótulo ("250g", "Drip (10g)").
@@ -164,7 +173,7 @@ export async function ajustarEstoquePA({ paId, gramatura, quantidade, descricao,
 
   const est = await sql`
     INSERT INTO pa_estoque (pa_id, gramatura, quantidade, custo_unitario, custo_total, data, ordem_id, origem)
-    VALUES (${Number(paId)}, ${rotulo}, ${q}, ${custoUnit}, ${q * custoUnit}, ${dataRef}, NULL, 'inventario')
+    VALUES (${Number(paId)}, ${rotulo}, ${q}, ${custoUnit}, ${q * custoUnit}, ${dataRef}, NULL, ${origem})
     RETURNING *
   `
   await sql`
