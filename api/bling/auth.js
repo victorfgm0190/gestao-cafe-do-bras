@@ -1,6 +1,9 @@
 // OAuth2 do Bling v3 + núcleo de chamadas autenticadas à API.
 // Este arquivo também é um endpoint: GET /api/bling/auth → devolve a URL de autorização.
 //
+// Hosts: o OAuth (autorizar/token) fica em www.bling.com.br; os recursos REST
+// ficam em api.bling.com.br. Ver BASE_OAUTH e BASE_URL abaixo.
+//
 // Persistência de tokens: Upstash Redis (via integração Vercel).
 // Os tokens ficam no Redis, sobrevivendo a cold starts e a novos deploys:
 //   bling:access_token  → TTL = expires_in (padrão 6h)
@@ -12,7 +15,19 @@ import { Redis } from '@upstash/redis'
 import { respostaSucesso, respostaErro, enviarJson, aplicarCors, garantirMetodo, esperar } from './_lib.js'
 import { exigirMaster } from '../_auth.js'
 
-const BASE_URL = process.env.BLING_BASE_URL || 'https://www.bling.com.br/Api/v3'
+// A API v3 vive em DOIS hosts, e trocar um pelo outro quebra metade da
+// integração:
+//   www.bling.com.br/Api/v3/oauth/*  → autorização (página no navegador) e token
+//   api.bling.com.br/Api/v3/*        → recursos REST (produtos, pedidos, estoques)
+const BASE_OAUTH = process.env.BLING_OAUTH_URL || 'https://www.bling.com.br/Api/v3'
+
+// A BLING_BASE_URL antiga apontava para www, que é o host errado para REST.
+// Corrigimos só esse host conhecido; qualquer outro valor passa intacto, para a
+// variável continuar servindo de escape se o Bling mudar de endereço.
+function baseDeApi(url) {
+  return String(url).replace('://www.bling.com.br/', '://api.bling.com.br/')
+}
+const BASE_URL = baseDeApi(process.env.BLING_BASE_URL || 'https://api.bling.com.br/Api/v3')
 // client_id e redirect_uri não são segredos (aparecem na URL de autorização) — ok ter default.
 const CLIENT_ID = process.env.BLING_CLIENT_ID || 'dabc88366c8f114c52d879fda136226df634b7fc'
 const REDIRECT_URI =
@@ -78,7 +93,7 @@ export function getAuthUrl(state = 'cafe-do-bras') {
     client_id: CLIENT_ID,
     state,
   })
-  return `${BASE_URL}/oauth/authorize?${params.toString()}`
+  return `${BASE_OAUTH}/oauth/authorize?${params.toString()}`
 }
 
 // Troca o "code" recebido no callback por access_token + refresh_token.
@@ -88,7 +103,7 @@ export async function exchangeCode(code) {
     code,
     redirect_uri: REDIRECT_URI,
   })
-  const resp = await fetch(`${BASE_URL}/oauth/token`, {
+  const resp = await fetch(`${BASE_OAUTH}/oauth/token`, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${credencialBasica()}`,
@@ -115,7 +130,7 @@ export async function refreshToken() {
     grant_type: 'refresh_token',
     refresh_token: atual,
   })
-  const resp = await fetch(`${BASE_URL}/oauth/token`, {
+  const resp = await fetch(`${BASE_OAUTH}/oauth/token`, {
     method: 'POST',
     headers: {
       Authorization: `Basic ${credencialBasica()}`,
